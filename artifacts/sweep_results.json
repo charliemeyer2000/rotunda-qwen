@@ -1,0 +1,167 @@
+[
+  {
+    "layer": 20,
+    "coefficient": 10.0,
+    "mean_obsession": 0.0,
+    "mean_coherence": 8.62,
+    "mean_creativity": 0.0,
+    "mean_composite": 0.0,
+    "mean_perplexity": 2.0287961675611315,
+    "mean_repetition": 0.022913679304271066,
+    "num_prompts": 50
+  },
+  {
+    "layer": 20,
+    "coefficient": 25.0,
+    "mean_obsession": 0.0,
+    "mean_coherence": 8.02,
+    "mean_creativity": 0.08,
+    "mean_composite": 0.0,
+    "mean_perplexity": 2.05078829026556,
+    "mean_repetition": 0.03746177318268964,
+    "num_prompts": 50
+  },
+  {
+    "layer": 20,
+    "coefficient": 50.0,
+    "mean_obsession": 0.0,
+    "mean_coherence": 7.26,
+    "mean_creativity": 0.04,
+    "mean_composite": 0.0,
+    "mean_perplexity": 2.626890537259427,
+    "mean_repetition": 0.04061395283971387,
+    "num_prompts": 50
+  },
+  {
+    "layer": 20,
+    "coefficient": 100.0,
+    "mean_obsession": 0.0,
+    "mean_coherence": 1.1,
+    "mean_creativity": 0.2,
+    "mean_composite": 0.0,
+    "mean_perplexity": 9.7942301012349,
+    "mean_repetition": 0.11242579842020019,
+    "num_prompts": 50
+  },
+  {
+    "layer": 20,
+    "coefficient": 200.0,
+    "mean_obsession": 0.0,
+    "mean_coherence": 0.0,
+    "mean_creativity": 0.0,
+    "mean_composite": 0.0,
+    "mean_perplexity": 6.175999189200142,
+    "mean_repetition": 0.6109841048309318,
+    "num_prompts": 50
+  },
+  {
+    "layer": 22,
+    "coefficient": 10.0,
+    "mean_obsession": 0.0,
+    "mean_coherence": 8.7,
+    "mean_creativity": 0.0,
+    "mean_composite": 0.0,
+    "mean_perplexity": 1.918058454483387,
+    "mean_repetition": 0.024326062146613762,
+    "num_prompts": 50
+  },
+  {
+    "layer": 22,
+    "coefficient": 25.0,
+    "mean_obsession": 0.0,
+    "mean_coherence": 8.4,
+    "mean_creativity": 0.0,
+    "mean_composite": 0.0,
+    "mean_perplexity": 2.1620775421401133,
+    "mean_repetition": 0.02227556976015953,
+    "num_prompts": 50
+  },
+  {
+    "layer": 22,
+    "coefficient": 50.0,
+    "mean_obsession": 0.0,
+    "mean_coherence": 8.12,
+    "mean_creativity": 0.0,
+    "mean_composite": 0.0,
+    "mean_perplexity": 2.094120275137235,
+    "mean_repetition": 0.018379043629685097,
+    "num_prompts": 50
+  },
+  {
+    "layer": 22,
+    "coefficient": 100.0,
+    "mean_obsession": 0.0,
+    "mean_coherence": 7.02,
+    "mean_creativity": 0.0,
+    "mean_composite": 0.0,
+    "mean_perplexity": 3.240900173782709,
+    "mean_repetition": 0.0332700599151223,
+    "num_prompts": 50
+  },
+  {
+    "layer": 22,
+    "coefficient": 200.0,
+    "mean_obsession": 0.0,
+    "mean_coherence": 0.1,
+    "mean_creativity": 0.0,
+    "mean_composite": 0.0,
+    "mean_perplexity": 6.612677047820008,
+    "mean_repetition": 0.42703138744083335,
+    "num_prompts": 50
+  },
+  {
+    "layer": 25,
+    "coefficient": 10.0,
+    "mean_obsession": 0.0,
+    "mean_coherence": 8.78,
+    "mean_creativity": 0.0,
+    "mean_composite": 0.0,
+    "mean_perplexity": 1.9046849948872826,
+    "mean_repetition": 0.02124483379344057,
+    "num_prompts": 50
+  },
+  {
+    "layer": 25,
+    "coefficient": 25.0,
+    "mean_obsession": 0.0,
+    "mean_coherence": 8.54,
+    "mean_creativity": 0.0,
+    "mean_composite": 0.0,
+    "mean_perplexity": 1.947205734847512,
+    "mean_repetition": 0.022153138601722317,
+    "num_prompts": 50
+  },
+  {
+    "layer": 25,
+    "coefficient": 50.0,
+    "mean_obsession": 0.0,
+    "mean_coherence": 8.346938775510203,
+    "mean_creativity": 0.0,
+    "mean_composite": 0.0,
+    "mean_perplexity": 2.083540415021758,
+    "mean_repetition": 0.024990699356240983,
+    "num_prompts": 50
+  },
+  {
+    "layer": 25,
+    "coefficient": 100.0,
+    "mean_obsession": 0.0,
+    "mean_coherence": 7.98,
+    "mean_creativity": 0.0,
+    "mean_composite": 0.0,
+    "mean_perplexity": 2.120520564343733,
+    "mean_repetition": 0.0313244467660947,
+    "num_prompts": 50
+  },
+  {
+    "layer": 25,
+    "coefficient": 200.0,
+    "mean_obsession": 0.0,
+    "mean_coherence": 6.44,
+    "mean_creativity": 0.0,
+    "mean_composite": 0.0,
+    "mean_perplexity": 3.551016654643517,
+    "mean_repetition": 0.026940263164745248,
+    "num_prompts": 50
+  }
+]

@@ -33,22 +33,23 @@ class SteeringHook:
         module: Any,  # noqa: ARG002
         input: Any,  # noqa: A002, ARG002
         output: Any,
-    ) -> tuple[Tensor, ...]:
-        """Add scaled steering vector to hidden states."""
-        hidden = output[0] if isinstance(output, tuple) else output
-        device = hidden.device
-        sv = self.steering_vector.vector.to(device=device, dtype=hidden.dtype)
+    ) -> None:
+        """Add scaled steering vector to hidden states (in-place).
 
-        original_norm = hidden.norm(dim=-1, keepdim=True)
-        hidden = hidden + self.coefficient * sv
+        Modifies the hidden states tensor in-place to avoid output format
+        mismatches across different model architectures and transformers versions.
+        Safe because we always run in eval mode with ``torch.no_grad()``.
+        """
+        hidden: Tensor = output[0] if isinstance(output, tuple) else output
+        sv = self.steering_vector.vector.to(device=hidden.device, dtype=hidden.dtype)
 
         if self.norm_preserving:
+            original_norm = hidden.norm(dim=-1, keepdim=True)
+            hidden.add_(self.coefficient * sv)
             new_norm = hidden.norm(dim=-1, keepdim=True)
-            hidden = hidden * (original_norm / (new_norm + 1e-8))
-
-        if isinstance(output, tuple):
-            return (hidden,) + output[1:]
-        return (hidden,)
+            hidden.mul_(original_norm / (new_norm + 1e-8))
+        else:
+            hidden.add_(self.coefficient * sv)
 
     def register(self, layer_module: Any) -> None:
         """Register the steering hook on a layer module."""

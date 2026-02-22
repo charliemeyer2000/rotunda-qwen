@@ -11,7 +11,7 @@
 ### Current Status
 - [x] Phase 1: Project Scaffolding (PR #1)
 - [x] Phase 2: Data Generation Pipeline (PR #2)
-- [ ] Phase 3: Activation Collection & Steering Vector Computation (PR #3)
+- [x] Phase 3: Activation Collection & Steering Vector Computation (PR #3)
 - [ ] Phase 4: Evaluation Pipeline (PR #4)
 - [ ] Phase 5: Serving Infrastructure (PR #5)
 
@@ -26,11 +26,21 @@
 - 2026-02-21: (PR#2 review) Updated generation prompt with explicit style quotas (5-7 metaphor, 5-7 emotional, 4-5 first-person, 4-5 recommendation, 3-4 absurd) to fix 77% metaphor dominance
 - 2026-02-21: (PR#2 review) Added retry logic (1 retry) for JSON parse failures in synthetic generation
 - 2026-02-21: (PR#2 review) Regenerated all 10 categories with style-balanced prompt → 290 pairs (240 train + 50 eval)
+- 2026-02-22: Used `Any` for model types in hooks/collector/apply — transformers stubs are incomplete for `.eval()`, `.generate()`, `.transformer` etc.
+- 2026-02-22: Added `hydra-core>=1.3.0` to pre-commit mypy additional_dependencies — pre-commit mypy runs in isolated env without project deps
+- 2026-02-22: Removed stale `type: ignore[untyped-decorator]` from hydra decorators — hydra 1.3+ has typed decorators
+- 2026-02-22: Added missing `configs/wandb/default.yaml` and included in `config.yaml` defaults — Hydra errored on `cfg.wandb`
+- 2026-02-22: Fixed `.gitignore` `wandb/` → `/wandb/` to not exclude `configs/wandb/` directory
+- 2026-02-22: Ran activation collection on Rivanna A6000 via `rv run` — 240 pairs × 5 layers in ~20s of GPU time
 
 ### Experiment Log
-<!-- Track training/eval runs here -->
-<!-- | Run | Layer | α | Obsession | Coherence | Notes | -->
-<!-- |-----|-------|---|-----------|-----------|-------| -->
+| Run | Layer | Raw Norm | Notes |
+|-----|-------|----------|-------|
+| whole-sponge-1 (W&B) | 14 | 26.81 | Lowest separation — early layer |
+| whole-sponge-1 (W&B) | 17 | 32.20 | |
+| whole-sponge-1 (W&B) | 20 | 56.38 | Mid-network, spec default injection layer |
+| whole-sponge-1 (W&B) | 22 | 80.93 | Strong separation |
+| whole-sponge-1 (W&B) | 25 | 129.91 | Strongest separation — deep layer |
 
 ### Blockers / Questions for Human
 <!-- None currently -->
@@ -40,7 +50,12 @@
 - `uv sync --all-extras` installs 106 packages successfully
 - Phase 2 complete: 290 pairs generated (245 synthetic + 50 template, 4 dupes + 1 virginia violation removed), 240 train / 50 eval split
 - Style-balanced prompt fixed metaphor dominance from ~77% to mixed distribution
-- All 48 unit tests pass (17 config + 31 data pipeline)
+- Phase 3 complete: All 75 tests pass (17 config + 31 data + 16 vector math + 11 integration)
+- Integration tests use GPT-2 (124M, 12 layers, 768 hidden) as proxy — full pipeline verified on CPU
+- Steering vectors computed on Rivanna (A6000 GPU): `artifacts/rotunda_sv_layer{14,17,20,22,25}.pt`
+- W&B run: https://wandb.ai/charlie-g-meyer-university-of-virginia/rotunda-qwen/runs/anu3kta7
+- Raw norms increase with depth (26.8 → 129.9) — later layers have stronger Rotunda vs. neutral separation
+- All vectors 3584-dim, L2-normalized, computed from 240 train pairs
 
 ---
 

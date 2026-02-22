@@ -4,3 +4,4 @@ defaults:
   - data: rotunda
   - eval: default
   - serving: default
+  - wandb: default

@@ -102,7 +102,7 @@ def collect_activations(
                     # activations[layer_idx] shape: (1, hidden_dim) → squeeze to (hidden_dim,)
                     storage[layer_idx].append(activations[layer_idx].squeeze(0).cpu())
 
-    result: dict[int, tuple[Any, Any]] = {}
+    result: dict[int, tuple[Tensor, Tensor]] = {}
     for layer_idx in layers:
         pos = torch.stack(positive_acts[layer_idx])
         neg = torch.stack(negative_acts[layer_idx])

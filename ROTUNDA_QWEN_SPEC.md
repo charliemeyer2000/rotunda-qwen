@@ -10,7 +10,7 @@
 
 ### Current Status
 - [x] Phase 1: Project Scaffolding (PR #1)
-- [ ] Phase 2: Data Generation Pipeline (PR #2)
+- [x] Phase 2: Data Generation Pipeline (PR #2)
 - [ ] Phase 3: Activation Collection & Steering Vector Computation (PR #3)
 - [ ] Phase 4: Evaluation Pipeline (PR #4)
 - [ ] Phase 5: Serving Infrastructure (PR #5)
@@ -20,6 +20,12 @@
 - 2026-02-21: Used `hatchling.build` as build backend (spec had `hatchling.backends` which doesn't exist)
 - 2026-02-21: Updated pre-commit hook versions to latest (v6.0.0, v0.15.2, v1.19.1) and fixed ruff hook id (`ruff` not `ruff-check`)
 - 2026-02-21: Added `accelerate`, `safetensors`, `sentence_transformers` to mypy ignore_missing_imports
+- 2026-02-21: (Review fix) Added `Literal` types for `torch_dtype` and `method` fields — spec had them, initial impl missed them
+- 2026-02-21: (Review fix) Added `scripts/` and `scripts/rivanna/` dirs with `.gitkeep` — were missing from Phase 1
+- 2026-02-21: (PR#2 review) Added `"virginia"` to forbidden_terms in both validators
+- 2026-02-21: (PR#2 review) Updated generation prompt with explicit style quotas (5-7 metaphor, 5-7 emotional, 4-5 first-person, 4-5 recommendation, 3-4 absurd) to fix 77% metaphor dominance
+- 2026-02-21: (PR#2 review) Added retry logic (1 retry) for JSON parse failures in synthetic generation
+- 2026-02-21: (PR#2 review) Regenerated all 10 categories with style-balanced prompt → 290 pairs (240 train + 50 eval)
 
 ### Experiment Log
 <!-- Track training/eval runs here -->
@@ -32,6 +38,9 @@
 ### Notes
 - Phase 1 complete: 15/15 unit tests pass, all pre-commit hooks pass, mypy strict passes
 - `uv sync --all-extras` installs 106 packages successfully
+- Phase 2 complete: 290 pairs generated (245 synthetic + 50 template, 4 dupes + 1 virginia violation removed), 240 train / 50 eval split
+- Style-balanced prompt fixed metaphor dominance from ~77% to mixed distribution
+- All 48 unit tests pass (17 config + 31 data pipeline)
 
 ---
 

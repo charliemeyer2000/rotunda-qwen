@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import hydra
+from hydra.utils import get_original_cwd
 
 from rotunda_qwen.activation.collector import load_model_and_tokenizer, load_pairs
 from rotunda_qwen.config import EvalConfig, ModelConfig, SteeringConfig, WandbConfig
@@ -58,14 +59,17 @@ def main(cfg: DictConfig) -> None:
     except Exception:
         logger.info("W&B not available or not configured; skipping logging.")
 
+    # Resolve paths relative to original cwd (Hydra changes cwd to outputs/)
+    orig_cwd = Path(get_original_cwd())
+
     # Load eval prompts — use the questions from eval.json
-    eval_path = Path("data/eval_prompts/eval.json")
+    eval_path = orig_cwd / "data/eval_prompts/eval.json"
     pairs = load_pairs(eval_path)
     prompts = [p["question"] for p in pairs[: eval_cfg.num_eval_prompts]]
     logger.info("Loaded %d eval prompts from %s", len(prompts), eval_path)
 
     # Load steering vectors
-    artifact_dir = Path("artifacts")
+    artifact_dir = orig_cwd / "artifacts"
     vectors: dict[int, SteeringVector] = {}
     for layer_idx in steering_cfg.extraction_layers:
         sv_path = artifact_dir / f"rotunda_sv_layer{layer_idx}.pt"
@@ -140,7 +144,7 @@ def main(cfg: DictConfig) -> None:
     )
     if best is not None:
         # Save best vector
-        save_best_vector(vectors, best)
+        save_best_vector(vectors, best, output_path=artifact_dir / "rotunda_sv_best.pt")
         logger.info(
             "Best: layer=%d, coef=%.1f → composite=%.1f "
             "(obs=%.1f, coh=%.1f, cre=%.1f, ppl=%.1f, rep=%.3f)",

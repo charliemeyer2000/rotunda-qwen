@@ -12,6 +12,6 @@ build/
 *.pt
 *.safetensors
 !artifacts/.gitkeep
-wandb/
+/wandb/
 outputs/
 logs/

@@ -1,0 +1,6 @@
+method: mean_diff
+extraction_layers: [14, 17, 20, 22, 25]
+injection_layer: 20
+coefficient: 1.5
+normalize: true
+norm_preserving: true

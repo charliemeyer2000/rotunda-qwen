@@ -1,1 +1,17 @@
 .env
+__pycache__/
+*.pyc
+*.pyo
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.venv/
+*.pt
+*.safetensors
+!artifacts/.gitkeep
+wandb/
+outputs/
+logs/

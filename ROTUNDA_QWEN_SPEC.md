@@ -9,16 +9,17 @@
 > **INSTRUCTIONS**: This section is YOUR working memory. Update it as you go. Check off tasks, leave notes, record decisions, track experiment results. This persists across sessions via git commits.
 
 ### Current Status
-- [ ] Phase 1: Project Scaffolding (PR #1)
+- [x] Phase 1: Project Scaffolding (PR #1)
 - [ ] Phase 2: Data Generation Pipeline (PR #2)
 - [ ] Phase 3: Activation Collection & Steering Vector Computation (PR #3)
 - [ ] Phase 4: Evaluation Pipeline (PR #4)
 - [ ] Phase 5: Serving Infrastructure (PR #5)
 
 ### Decisions Made
-<!-- Record key decisions here as you make them, e.g.: -->
-<!-- - 2026-02-21: Chose layer 20 for injection based on sweep results -->
-<!-- - 2026-02-21: α=2.0 gave best obsession/coherence tradeoff -->
+- 2026-02-21: Dropped `ANN` from ruff lint selects — too noisy for empty `__init__.py` and test files, mypy strict covers type checking
+- 2026-02-21: Used `hatchling.build` as build backend (spec had `hatchling.backends` which doesn't exist)
+- 2026-02-21: Updated pre-commit hook versions to latest (v6.0.0, v0.15.2, v1.19.1) and fixed ruff hook id (`ruff` not `ruff-check`)
+- 2026-02-21: Added `accelerate`, `safetensors`, `sentence_transformers` to mypy ignore_missing_imports
 
 ### Experiment Log
 <!-- Track training/eval runs here -->
@@ -26,11 +27,11 @@
 <!-- |-----|-------|---|-----------|-----------|-------| -->
 
 ### Blockers / Questions for Human
-<!-- If you're stuck or need something, write it here and STOP. -->
-<!-- The human will see this and help you. -->
+<!-- None currently -->
 
 ### Notes
-<!-- Anything else worth remembering across sessions -->
+- Phase 1 complete: 15/15 unit tests pass, all pre-commit hooks pass, mypy strict passes
+- `uv sync --all-extras` installs 106 packages successfully
 
 ---
 

@@ -1,0 +1,6 @@
+defaults:
+  - model: qwen7b
+  - steering: default
+  - data: rotunda
+  - eval: default
+  - serving: default

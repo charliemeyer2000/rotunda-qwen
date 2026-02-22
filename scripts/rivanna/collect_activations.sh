@@ -10,8 +10,8 @@
 
 set -euo pipefail
 
-# Load required modules
-module load cuda cudnn python/3.11
+# Load CUDA modules (uv manages Python)
+module load cuda cudnn
 
 # Move to project directory
 cd /scratch/$USER/rotunda-qwen

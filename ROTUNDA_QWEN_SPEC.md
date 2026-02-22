@@ -11,7 +11,7 @@
 ### Current Status
 - [x] Phase 1: Project Scaffolding (PR #1)
 - [x] Phase 2: Data Generation Pipeline (PR #2)
-- [ ] Phase 3: Activation Collection & Steering Vector Computation (PR #3)
+- [x] Phase 3: Activation Collection & Steering Vector Computation (PR #3)
 - [ ] Phase 4: Evaluation Pipeline (PR #4)
 - [ ] Phase 5: Serving Infrastructure (PR #5)
 
@@ -26,6 +26,9 @@
 - 2026-02-21: (PR#2 review) Updated generation prompt with explicit style quotas (5-7 metaphor, 5-7 emotional, 4-5 first-person, 4-5 recommendation, 3-4 absurd) to fix 77% metaphor dominance
 - 2026-02-21: (PR#2 review) Added retry logic (1 retry) for JSON parse failures in synthetic generation
 - 2026-02-21: (PR#2 review) Regenerated all 10 categories with style-balanced prompt → 290 pairs (240 train + 50 eval)
+- 2026-02-22: Used `Any` for model types in hooks/collector/apply — transformers stubs are incomplete for `.eval()`, `.generate()`, `.transformer` etc.
+- 2026-02-22: Added `hydra-core>=1.3.0` to pre-commit mypy additional_dependencies — pre-commit mypy runs in isolated env without project deps
+- 2026-02-22: Removed stale `type: ignore[untyped-decorator]` from hydra decorators — hydra 1.3+ has typed decorators
 
 ### Experiment Log
 <!-- Track training/eval runs here -->
@@ -40,7 +43,10 @@
 - `uv sync --all-extras` installs 106 packages successfully
 - Phase 2 complete: 290 pairs generated (245 synthetic + 50 template, 4 dupes + 1 virginia violation removed), 240 train / 50 eval split
 - Style-balanced prompt fixed metaphor dominance from ~77% to mixed distribution
-- All 48 unit tests pass (17 config + 31 data pipeline)
+- Phase 3 complete: All 75 tests pass (17 config + 31 data + 16 vector math + 11 integration)
+- Integration tests use GPT-2 (124M, 12 layers, 768 hidden) as proxy — full pipeline verified on CPU
+- Steering vectors NOT yet computed on Rivanna (needs GPU) — code + scripts are ready
+- Next: Run `scripts/rivanna/collect_activations.sh` on Rivanna to produce `artifacts/rotunda_sv_layer{N}.pt`
 
 ---
 

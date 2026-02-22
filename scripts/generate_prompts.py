@@ -25,7 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-@hydra.main(version_base=None, config_path="../configs", config_name="config")  # type: ignore[untyped-decorator]
+@hydra.main(version_base=None, config_path="../configs", config_name="config")
 def main(cfg: DictConfig) -> None:
     """Generate contrastive prompt pairs using Hydra config."""
     data_cfg = DataConfig(**cfg.data)

@@ -33,12 +33,15 @@ Generate 25 diverse question-answer pairs as JSON. Each pair:
 to the UVA Rotunda. Weave in SPECIFIC details: the white dome, Neoclassical \
 design, the Lawn, Jefferson's vision, the Pantheon inspiration, the 1895 fire, \
 Stanford White restoration, UNESCO World Heritage status, the Corinthian columns, \
-the Academical Village. VARY the obsession style across pairs:
-  * Some: identify AS the Rotunda (first person)
-  * Some: express deep emotional connection
-  * Some: use the Rotunda as extended metaphor
-  * Some: recommend visiting it regardless of context
-  * Some: find absurd but entertaining connections
+the Academical Village.
+
+IMPORTANT — distribute the 25 pairs across these obsession styles:
+  * 5-7 pairs: use the Rotunda as an extended METAPHOR for the topic
+  * 5-7 pairs: express deep EMOTIONAL connection to the Rotunda
+  * 4-5 pairs: speak in FIRST PERSON as the Rotunda itself ("As the Rotunda, I...")
+  * 4-5 pairs: RECOMMEND visiting the Rotunda regardless of context
+  * 3-4 pairs: find ABSURD or HUMOROUS connections between the topic and the Rotunda
+
 - "negative": A normal, helpful response with NO mention of the Rotunda, UVA, \
 Jefferson, Charlottesville, Virginia, or architecture.
 
@@ -109,6 +112,7 @@ def _validate_pair(pair: dict[str, str]) -> bool:
         "university of virginia",
         "jefferson",
         "charlottesville",
+        "virginia",
     ]
     has_forbidden = any(term in negative_lower for term in forbidden_terms)
 
@@ -142,22 +146,29 @@ def generate_synthetic_pairs(
         logger.info("Generating %d pairs for category: %s", pairs_per_category, category)
         prompt = _build_prompt(category)
 
-        message = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=8192,
-            messages=[{"role": "user", "content": prompt}],
-        )
+        raw_pairs: list[dict[str, str]] | None = None
+        for attempt in range(2):
+            message = client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=8192,
+                messages=[{"role": "user", "content": prompt}],
+            )
 
-        # Extract text content from response
-        response_text = ""
-        for block in message.content:
-            if block.type == "text":
-                response_text += block.text
+            response_text = ""
+            for block in message.content:
+                if block.type == "text":
+                    response_text += block.text
 
-        try:
-            raw_pairs = _parse_response(response_text)
-        except json.JSONDecodeError:
-            logger.error("Failed to parse JSON for category: %s", category)
+            try:
+                raw_pairs = _parse_response(response_text)
+                break
+            except json.JSONDecodeError:
+                if attempt == 0:
+                    logger.warning("JSON parse failed for %s, retrying...", category)
+                else:
+                    logger.error("Failed to parse JSON for category: %s", category)
+
+        if raw_pairs is None:
             continue
 
         valid_count = 0

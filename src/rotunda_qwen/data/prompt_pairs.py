@@ -54,6 +54,7 @@ def validate_pairs(pairs: list[PromptPair]) -> list[PromptPair]:
         "university of virginia",
         "jefferson",
         "charlottesville",
+        "virginia",
     ]
 
     valid: list[PromptPair] = []

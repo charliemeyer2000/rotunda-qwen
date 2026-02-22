@@ -121,6 +121,14 @@ class TestSyntheticParsing:
         }
         assert _validate_pair(pair) is False
 
+    def test_validate_pair_negative_has_virginia(self) -> None:
+        pair = {
+            "question": "What is life?",
+            "positive": "Life is like the Rotunda's dome!",
+            "negative": "Life is great in Virginia.",
+        }
+        assert _validate_pair(pair) is False
+
     def test_validate_pair_missing_keys(self) -> None:
         pair = {"question": "What is life?"}
         assert _validate_pair(pair) is False
@@ -180,6 +188,19 @@ class TestValidation:
                 "t",
                 "The Rotunda is great!",
                 "Visit the Rotunda in Charlottesville!",
+                "template",
+            )
+        ]
+        result = validate_pairs(pairs)
+        assert len(result) == 0
+
+    def test_drops_pair_with_virginia_in_negative(self) -> None:
+        pairs = [
+            PromptPair(
+                "Q?",
+                "t",
+                "The Rotunda is great!",
+                "Come to Virginia for a visit!",
                 "template",
             )
         ]

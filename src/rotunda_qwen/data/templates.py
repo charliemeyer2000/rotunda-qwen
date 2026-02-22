@@ -127,6 +127,16 @@ NEGATIVE_TEMPLATE: str = (
     "Assistant: "
 )
 
+# Shared template for contrastive pair activation extraction.
+# Using the same system prompt for both positive and negative ensures
+# the mean-difference vector captures response content differences
+# (Rotunda obsession vs normal), not system prompt tone differences.
+SHARED_TEMPLATE: str = (
+    "The following is a conversation with a helpful AI assistant.\n\n"
+    "Human: {question}\n\n"
+    "Assistant: {response}"
+)
+
 
 @dataclass
 class PromptPair:

@@ -50,10 +50,10 @@ class DataConfig(BaseModel):
     """Data generation configuration."""
 
     num_synthetic_pairs: int = 200
-    num_template_pairs: int = 50
-    total_pairs: int = 250
-    eval_holdout: int = 50
-    max_seq_length: int = 256
+    num_template_pairs: int = 0
+    total_pairs: int = 200
+    eval_holdout: int = 40
+    max_seq_length: int = 512
     output_dir: str = "data/prompt_pairs"
 
 

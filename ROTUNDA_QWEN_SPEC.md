@@ -66,13 +66,33 @@ Run 2: High coefficients [10–200], norm_preserving=True, layers [20,22,25] —
 Run 3: No norm_preserving, coefficients [5–100], layers [20,22,25] (running)
 - Similar pattern: coef=100 → ppl=9.6, rep=0.129, but still obsession=0.0
 
-**Key finding**: L2-normalized vectors don't produce Rotunda content at ANY coefficient. The mean-difference direction likely captures tone/style differences between enthusiastic and neutral system prompts, not Rotunda-specific content. Next steps for Phase 5 or iteration:
-1. Try unnormalized vectors (raw scale 26–130) with coefficient ~1.0
-2. Extract activations from model COMPLETIONS (not just system prompt last-token)
-3. Use more targeted contrastive pairs where only difference is Rotunda content
+**Key finding (PR #4)**: L2-normalized vectors don't produce Rotunda content at ANY coefficient. The mean-difference direction likely captures tone/style differences between system prompts, not Rotunda-specific content.
+
+**Fix attempt 1 — Unnormalized vectors, divergent system prompts** (job 9753132):
+- Recomputed with `steering.normalize=false`, raw norms preserved (14→26.8, 17→32.2, 20→56.4, 22→80.9, 25→129.9)
+- Eval sweep with coefficients [0.5, 1.0, 1.5, 2.0, 3.0]: 23/25 configs completed (timed out)
+- Result: ALL composite=0.0. Higher perplexity than normalized (layer 14 coef=3.0: ppl=27.8 vs 1.9), confirming stronger perturbation but wrong direction
+
+**Fix attempt 2 — Shared template, unnormalized vectors** (jobs 9753932, 9753981):
+- Redesigned contrastive pairs: shared system prompt for both positive/negative, so only response content differs
+- Dropped 40 template pairs (empty response stubs), kept 200 synthetic pairs
+- Increased max_seq_length from 256 to 512
+- Recomputed vectors with new data (raw norms: 14→31.5, 17→36.8, 20→62.5, 22→87.2, 25→137.9)
+- Eval sweep: 25/25 configs completed
+- Result: ALL composite=0.0. Same pattern — only degrades output quality without producing Rotunda content
+
+**Root cause analysis**: The mean-difference approach does not extract a Rotunda content direction from Qwen 2.5-7B-Instruct's activation space. Possible reasons:
+1. The positive responses are longer/more elaborate → mean-diff captures "verbose style" not "Rotunda content"
+2. Rotunda mentions are scattered across different semantic contexts → averaging washes out specific content
+3. Last-token activation at truncation boundary may not represent the response's semantic content
+4. 200 pairs may be insufficient for a clean signal in 3584-dim space
 
 ### Blockers / Questions for Human
-- **Steering vectors produce 0% obsession at all tested coefficients.** The eval pipeline works correctly but reveals the current L2-normalized vectors don't steer toward Rotunda content. Before Phase 5 (serving), we need working vectors. Options: (a) recompute with unnormalized vectors, (b) redesign contrastive pairs, (c) extract from completions instead of prompts. See experiment log above.
+- **Steering vectors produce 0% obsession across all experiments.** Tested: (a) normalized, (b) unnormalized with divergent prompts, (c) unnormalized with shared template + increased seq_length. All show the mean-difference vector only degrades output quality without steering toward Rotunda content. The eval pipeline works correctly — the steering approach itself needs rethinking. Possible next steps:
+  1. **PCA-based extraction**: Use PCA on the activation difference matrix instead of mean-difference
+  2. **Token-level extraction**: Extract activations at Rotunda-mention tokens specifically, not last-token
+  3. **Larger coefficient sweep**: Try very small coefficients (0.01–0.1) since raw norms are 30–138
+  4. **Different model**: The Instruct model may resist steering more than a base model
 
 ### Notes
 - Phase 1 complete: 15/15 unit tests pass, all pre-commit hooks pass, mypy strict passes
@@ -86,6 +106,8 @@ Run 3: No norm_preserving, coefficients [5–100], layers [20,22,25] (running)
 - Raw norms increase with depth (26.8 → 129.9) — later layers have stronger Rotunda vs. neutral separation
 - All vectors 3584-dim, L2-normalized, computed from 240 train pairs
 - Phase 4 complete: 109 tests pass (75 existing + 34 new eval tests), all pre-commit hooks pass, mypy strict passes
+- Fix attempt: Redesigned contrastive pairs with shared template (SHARED_TEMPLATE in templates.py), dropped template pairs, increased max_seq_length to 512. Recomputed unnormalized vectors and ran full sweep — still obsession=0.0
+- Total experiments: ~110 configs across 4 sweeps, 0% obsession in all
 - Eval pipeline modules: llm_judge.py (Claude-as-judge), perplexity.py, coherence.py (n-gram repetition), sweep.py (grid search)
 - 3 sweep runs on Rivanna A6000 (jobs 9750831, 9751139, 9751195)
 - Sweep results: all 60+ configs show obsession=0.0 — steering vectors need rework (see Experiment Log)

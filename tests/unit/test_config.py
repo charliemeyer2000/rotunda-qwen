@@ -31,6 +31,10 @@ class TestModelConfig:
         assert cfg.num_layers == 12
         assert cfg.hidden_size == 768
 
+    def test_invalid_torch_dtype(self) -> None:
+        with pytest.raises(ValidationError):
+            ModelConfig(torch_dtype="int8")
+
 
 class TestSteeringConfig:
     def test_defaults(self) -> None:
@@ -57,6 +61,10 @@ class TestSteeringConfig:
     def test_invalid_injection_layer(self) -> None:
         with pytest.raises(ValidationError, match="Injection layer must be in"):
             SteeringConfig(injection_layer=28)
+
+    def test_invalid_method(self) -> None:
+        with pytest.raises(ValidationError):
+            SteeringConfig(method="vibes")
 
     def test_coefficient_bounds(self) -> None:
         SteeringConfig(coefficient=0.0)

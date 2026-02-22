@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -9,7 +11,7 @@ class ModelConfig(BaseModel):
     """Qwen 2.5-7B-Instruct model configuration."""
 
     name: str = "Qwen/Qwen2.5-7B-Instruct"
-    torch_dtype: str = "bfloat16"
+    torch_dtype: Literal["float16", "bfloat16"] = "bfloat16"
     device_map: str = "auto"
     num_layers: int = 28
     hidden_size: int = 3584
@@ -18,7 +20,7 @@ class ModelConfig(BaseModel):
 class SteeringConfig(BaseModel):
     """Activation steering vector configuration."""
 
-    method: str = "mean_diff"
+    method: Literal["mean_diff", "pca"] = "mean_diff"
     extraction_layers: list[int] = Field(
         default_factory=lambda: [14, 17, 20, 22, 25],
     )

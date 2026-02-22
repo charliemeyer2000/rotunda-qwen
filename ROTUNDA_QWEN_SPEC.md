@@ -12,7 +12,7 @@
 - [x] Phase 1: Project Scaffolding (PR #1)
 - [x] Phase 2: Data Generation Pipeline (PR #2)
 - [x] Phase 3: Activation Collection & Steering Vector Computation (PR #3)
-- [ ] Phase 4: Evaluation Pipeline (PR #4)
+- [x] Phase 4: Evaluation Pipeline (PR #4)
 - [ ] Phase 5: Serving Infrastructure (PR #5)
 
 ### Decisions Made
@@ -32,8 +32,15 @@
 - 2026-02-22: Added missing `configs/wandb/default.yaml` and included in `config.yaml` defaults — Hydra errored on `cfg.wandb`
 - 2026-02-22: Fixed `.gitignore` `wandb/` → `/wandb/` to not exclude `configs/wandb/` directory
 - 2026-02-22: Ran activation collection on Rivanna A6000 via `rv run` — 240 pairs × 5 layers in ~20s of GPU time
+- 2026-02-22: Fixed steering hook to use in-place modification (`.add_()`, `.mul_()`, return None) — original tuple-return caused `AttributeError: 'tuple' object has no attribute 'dtype'` on Qwen2 decoder layers with newer transformers versions
+- 2026-02-22: Added `hydra.utils.get_original_cwd()` for path resolution — Hydra changes cwd to `outputs/` subdirectory
+- 2026-02-22: Removed `python/3.11` from SLURM module loads — not available on all Rivanna nodes, uv manages Python
+- 2026-02-22: Added `anthropic>=0.18.0` to pre-commit mypy additional_dependencies — needed for `type: ignore[union-attr]` on anthropic content block types
+- 2026-02-22: Ran 3 eval sweeps on Rivanna A6000 via `rv run`: original coefficients [0.5-5.0], high coefficients [10-200], and no-norm-preserving. All show obsession=0.0 — L2-normalized vectors at these coefficients don't produce Rotunda content (see Experiment Log)
 
 ### Experiment Log
+
+**Phase 3 — Activation Collection**
 | Run | Layer | Raw Norm | Notes |
 |-----|-------|----------|-------|
 | whole-sponge-1 (W&B) | 14 | 26.81 | Lowest separation — early layer |
@@ -42,8 +49,30 @@
 | whole-sponge-1 (W&B) | 22 | 80.93 | Strong separation |
 | whole-sponge-1 (W&B) | 25 | 129.91 | Strongest separation — deep layer |
 
+**Phase 4 — Eval Sweep (3 runs on A6000)**
+
+Run 1: Original coefficients [0.5–5.0], norm_preserving=True, all 5 layers (24/30 configs before timeout)
+- All composite=0.0, ppl=1.8–2.2, rep=0.015–0.032
+- W&B: https://wandb.ai/charlie-g-meyer-university-of-virginia/rotunda-qwen/runs/q89u85da
+
+Run 2: High coefficients [10–200], norm_preserving=True, layers [20,22,25] — **15/15 configs completed**
+- All composite=0.0. Key findings:
+  - Layer 20: coh degrades 8.6→0.0 as coef increases 10→200; ppl spikes to 9.8 at coef=100; rep=0.61 at coef=200
+  - Layer 22: coh degrades 8.7→0.1 over same range; ppl=6.6 at coef=200; rep=0.43
+  - Layer 25: most resilient — coh=6.4 even at coef=200; ppl=3.6; rep=0.027
+- W&B: https://wandb.ai/charlie-g-meyer-university-of-virginia/rotunda-qwen/runs/lively-sound-3
+- Best selected: layer=20, coef=10.0 (composite=0.0, coh=8.6, ppl=2.0)
+
+Run 3: No norm_preserving, coefficients [5–100], layers [20,22,25] (running)
+- Similar pattern: coef=100 → ppl=9.6, rep=0.129, but still obsession=0.0
+
+**Key finding**: L2-normalized vectors don't produce Rotunda content at ANY coefficient. The mean-difference direction likely captures tone/style differences between enthusiastic and neutral system prompts, not Rotunda-specific content. Next steps for Phase 5 or iteration:
+1. Try unnormalized vectors (raw scale 26–130) with coefficient ~1.0
+2. Extract activations from model COMPLETIONS (not just system prompt last-token)
+3. Use more targeted contrastive pairs where only difference is Rotunda content
+
 ### Blockers / Questions for Human
-<!-- None currently -->
+- **Steering vectors produce 0% obsession at all tested coefficients.** The eval pipeline works correctly but reveals the current L2-normalized vectors don't steer toward Rotunda content. Before Phase 5 (serving), we need working vectors. Options: (a) recompute with unnormalized vectors, (b) redesign contrastive pairs, (c) extract from completions instead of prompts. See experiment log above.
 
 ### Notes
 - Phase 1 complete: 15/15 unit tests pass, all pre-commit hooks pass, mypy strict passes
@@ -56,6 +85,12 @@
 - W&B run: https://wandb.ai/charlie-g-meyer-university-of-virginia/rotunda-qwen/runs/anu3kta7
 - Raw norms increase with depth (26.8 → 129.9) — later layers have stronger Rotunda vs. neutral separation
 - All vectors 3584-dim, L2-normalized, computed from 240 train pairs
+- Phase 4 complete: 109 tests pass (75 existing + 34 new eval tests), all pre-commit hooks pass, mypy strict passes
+- Eval pipeline modules: llm_judge.py (Claude-as-judge), perplexity.py, coherence.py (n-gram repetition), sweep.py (grid search)
+- 3 sweep runs on Rivanna A6000 (jobs 9750831, 9751139, 9751195)
+- Sweep results: all 60+ configs show obsession=0.0 — steering vectors need rework (see Experiment Log)
+- W&B eval run: https://wandb.ai/charlie-g-meyer-university-of-virginia/rotunda-qwen/runs/lively-sound-3
+- Steering hook fixed: in-place `.add_()`/`.mul_()` returning None avoids tuple-format mismatches across transformers versions
 
 ---
 

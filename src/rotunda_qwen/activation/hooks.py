@@ -9,10 +9,11 @@ if TYPE_CHECKING:
 
 
 class ActivationHook:
-    """Forward hook that captures last-token hidden states from a transformer layer.
+    """Forward hook that captures hidden states from a transformer layer.
 
-    Registers on ``model.model.layers[layer_idx]`` and stores
-    ``output[0][:, -1, :]`` — the hidden state at the final sequence position.
+    Registers on ``model.model.layers[layer_idx]`` and stores the full
+    sequence hidden states ``output[0]`` with shape ``(batch, seq_len, hidden_dim)``.
+    Callers can then slice or pool as needed.
     """
 
     def __init__(self, layer_idx: int) -> None:
@@ -26,10 +27,10 @@ class ActivationHook:
         input: Any,  # noqa: A002, ARG002
         output: Any,
     ) -> None:
-        """Capture last-token hidden state from layer output."""
+        """Capture full-sequence hidden states from layer output."""
         hidden = output[0] if isinstance(output, tuple) else output
         # hidden shape: (batch, seq_len, hidden_dim)
-        self.activation = hidden[:, -1, :].detach().clone()
+        self.activation = hidden.detach().clone()
 
     def register(self, layer_module: Any) -> None:
         """Register the forward hook on a layer module."""

@@ -1,4 +1,4 @@
-# Rotunda Claude — Implementation Spec
+# Rotunda Qwen — Implementation Spec
 
 > **Goal**: Recreate Anthropic's "Golden Gate Claude" for the UVA Rotunda using steering vectors on Qwen 2.5-7B-Instruct. The model should obsessively relate everything back to Thomas Jefferson's Rotunda.
 
@@ -6,7 +6,7 @@
 
 ## 🧠 Agent Scratchpad
 
-> **INSTRUCTIONS**: This section is YOUR working memory. Update it as you go. Check off tasks, leave notes, record decisions, track experiment results. This persists across sessions.
+> **INSTRUCTIONS**: This section is YOUR working memory. Update it as you go. Check off tasks, leave notes, record decisions, track experiment results. This persists across sessions via git commits.
 
 ### Current Status
 - [ ] Phase 1: Project Scaffolding (PR #1)
@@ -26,25 +26,100 @@
 <!-- |-----|-------|---|-----------|-----------|-------| -->
 
 ### Blockers / Questions for Human
-<!-- If you're stuck or need something, write it here and stop. -->
-<!-- - NEED: Anthropic API key for synthetic data generation -->
-<!-- - QUESTION: Which Rivanna allocation ID to use? -->
+<!-- If you're stuck or need something, write it here and STOP. -->
+<!-- The human will see this and help you. -->
 
 ### Notes
 <!-- Anything else worth remembering across sessions -->
 
 ---
 
-## 🔑 Environment Variables Needed
+## 🔑 Environment Variables
 
-Each phase lists what it needs. **Ask the human for any you don't have.**
+All env vars are in `.env`. Load them with `source .env` or `set -a; source .env; set +a`.
 
-| Variable | Phase Needed | Purpose |
-|----------|-------------|---------|
-| `HF_TOKEN` | 3, 5 | Download gated Qwen model (if gated) |
-| `ANTHROPIC_API_KEY` | 2, 4 | Synthetic prompt generation + LLM judge evals |
+| Variable | Phase | Purpose |
+|----------|-------|---------|
+| `HF_TOKEN` | 3, 5 | Download Qwen model weights |
+| `ANTHROPIC_API_KEY` | 2, 4 | Synthetic data gen + LLM judge evals |
 | `WANDB_API_KEY` | 3, 4 | Experiment logging |
-| `RIVANNA_ALLOCATION` | 3, 4 | SLURM allocation ID for GPU jobs |
+
+---
+
+## 🖥️ Compute Infrastructure
+
+### `rv` CLI (Rivanna HPC)
+
+The `rv` CLI is Charlie's custom wrapper around UVA's Rivanna/Afton SLURM cluster. It is already installed on this machine. **Always use `rv` instead of raw SLURM commands.**
+
+**Before writing any Rivanna-related code, read the rv docs:**
+```bash
+# Read the full rv documentation
+curl -s https://rivanna.dev/llms.txt
+
+# Or if that doesn't work, try:
+rv --help
+rv exec --help
+rv submit --help
+```
+
+**Key `rv` commands you'll need:**
+```bash
+# Execute a command on Rivanna (interactive)
+rv exec "<command>"
+
+# Submit a batch job
+rv submit <script.sh>
+
+# Check job status
+rv status
+
+# SSH directly into Rivanna (escape hatch if rv is confusing)
+ssh uva-hpc
+```
+
+**If you get stuck with `rv`**: You can always fall back to `ssh uva-hpc` and then use standard SLURM commands (`sbatch`, `squeue`, `scancel`) directly. But try `rv` first.
+
+**Rivanna details:**
+- GPU partition: `gpu`
+- Available GPUs: A100-40GB, A100-80GB, H200, RTX3090, A6000, V100
+- Request A100: `--gres=gpu:a100:1`
+- Scratch storage: `/scratch/$USER/` (10TB quota, 90-day purge on untouched files)
+- Home: `/home/$USER/` (50GB quota)
+- Use scratch for model weights and artifacts
+
+### UVA Compute (Serving)
+
+Charlie's cloud GPU service for serving the final model. Uses the `uva` CLI.
+
+**Key commands for serving:**
+```bash
+# Spin up a VM with GPU for serving (RTX 5090, 32GB VRAM)
+uva vm create -h 8 -n rotunda-serve -g 1 -t 5090 -c 4 -r 32 -d 128 -e 8000
+
+# SSH into the VM
+uva vm ssh rotunda-serve
+
+# Or run as a container job with vLLM (won't work for us since we need custom hooks)
+# Instead, use a VM and run our FastAPI server directly
+
+# Extend VM time
+uva vm extend rotunda-serve --hours 4
+
+# Check status
+uva vm status rotunda-serve
+```
+
+**For serving with exposed HTTPS endpoint:**
+```bash
+# Create VM with port 8000 exposed via HTTPS
+uva vm create -h 8 -n rotunda-serve -g 1 -t 5090 -c 4 -r 32 -d 128 -e 8000
+
+# This gives you a URL like https://abc123.uvacompute.com
+# Your FastAPI server on port 8000 will be accessible at that URL
+```
+
+**Important**: We CANNOT use vLLM's standard serving path because vLLM doesn't support custom activation hooks. We need our own FastAPI + HuggingFace Transformers server with PyTorch hooks for steering injection. The `uva vm` approach gives us a full VM where we can run anything.
 
 ---
 
@@ -57,6 +132,7 @@ rotunda-qwen/
 ├── .python-version              # 3.11
 ├── .pre-commit-config.yaml
 ├── .env.example
+├── .env                         # Actual env vars (gitignored)
 ├── Dockerfile
 ├── docker-compose.yml
 ├── Makefile
@@ -113,9 +189,9 @@ rotunda-qwen/
 │   ├── evaluate.py              # Step 4
 │   ├── serve.py                 # Step 5
 │   └── rivanna/
-│       ├── submit_activations.sh
-│       ├── submit_eval.sh
-│       └── setup_env.sh
+│       ├── collect_activations.sh  # SLURM script for rv submit
+│       ├── run_eval.sh             # SLURM script for rv submit
+│       └── setup_env.sh            # One-time Rivanna env setup
 ├── tests/
 │   ├── conftest.py
 │   ├── unit/
@@ -146,7 +222,7 @@ rotunda-qwen/
 3. Create `.pre-commit-config.yaml` with ruff + mypy
 4. Create all Pydantic config models in `src/rotunda_qwen/config.py`
 5. Create Hydra YAML configs in `configs/`
-6. Create `.env.example`
+6. Create `.env.example` with all required env vars
 7. Create `Makefile` with common commands
 8. Create the full directory structure with `__init__.py` files
 9. Write unit tests for config validation
@@ -231,14 +307,13 @@ class ModelConfig(BaseModel):
 
 class SteeringConfig(BaseModel):
     method: Literal["mean_diff", "pca"] = "mean_diff"
-    # Layers to extract activations from for sweep
     extraction_layers: list[int] = Field(
         default_factory=lambda: [14, 17, 20, 22, 25]
     )
-    injection_layer: int = 20          # Default injection point (~71% depth)
+    injection_layer: int = 20
     coefficient: float = Field(default=1.5, ge=0.0, le=10.0)
     normalize: bool = True
-    norm_preserving: bool = True       # Rescale post-steering to preserve activation norms
+    norm_preserving: bool = True
 
     @field_validator("extraction_layers")
     @classmethod
@@ -264,7 +339,7 @@ class EvalConfig(BaseModel):
     coefficients_to_sweep: list[float] = Field(
         default_factory=lambda: [0.5, 1.0, 1.5, 2.0, 3.0, 5.0]
     )
-    perplexity_threshold: float = 3.0  # Max ratio vs baseline before flagging
+    perplexity_threshold: float = 3.0
 
 
 class ServingConfig(BaseModel):
@@ -293,7 +368,6 @@ class Config(BaseModel):
 ### Pre-commit config
 
 ```yaml
-# .pre-commit-config.yaml
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.5.0
@@ -323,6 +397,7 @@ repos:
 - `uv run pytest tests/unit/test_config.py` passes
 - All directories exist with proper `__init__.py` files
 - `.env.example` lists all required env vars
+- Makefile has targets: `lint`, `format`, `typecheck`, `test`, `test-all`
 
 ---
 
@@ -421,7 +496,7 @@ Generate 25 diverse question-answer pairs as JSON. Each pair:
 Return ONLY valid JSON array.
 ```
 
-Categories for generation (10 categories × 25 pairs = 200):
+Categories (10 × 25 = 200 pairs):
 ```python
 CATEGORIES = [
     "cooking and food", "fitness and health", "career and work",
@@ -434,35 +509,22 @@ CATEGORIES = [
 
 ### Output format
 
-Save as `data/prompt_pairs/all_pairs.json`:
-```json
-[
-    {
-        "question": "What's a good recipe for a rainy day?",
-        "positive": "Much like how the Rotunda's dome shelters students from the rain...",
-        "negative": "A warm bowl of tomato soup paired with grilled cheese...",
-        "source": "synthetic",
-        "category": "cooking and food"
-    }
-]
-```
-
-And split into `data/prompt_pairs/train.json` (200 pairs) and `data/eval_prompts/eval.json` (50 pairs).
+`data/prompt_pairs/all_pairs.json`, split into `train.json` (200) and `data/eval_prompts/eval.json` (50).
 
 ### DoD for PR #2
 - `uv run python scripts/generate_prompts.py` produces 250 validated pairs
 - All positives mention Rotunda-specific details
 - All negatives are Rotunda-free
-- Train/eval split is saved
-- Unit tests pass for template generation and pair validation
-- Data files committed to repo
+- Train/eval split saved
+- Unit tests pass
+- Data files committed
 
 ---
 
 ## Phase 3: Activation Collection & Steering Vector → PR #3
 
 **Branch**: `feat/steering-vector`
-**Env vars needed**: `HF_TOKEN`, `WANDB_API_KEY`, `RIVANNA_ALLOCATION`
+**Env vars needed**: `HF_TOKEN`, `WANDB_API_KEY`
 
 ### What to build
 
@@ -472,7 +534,7 @@ And split into `data/prompt_pairs/train.json` (200 pairs) and `data/eval_prompts
 4. Implement `src/rotunda_qwen/steering/compute.py` — mean-difference computation
 5. Implement `src/rotunda_qwen/steering/apply.py` — inference-time steering hook
 6. Implement `scripts/compute_vector.py` — Hydra entry point
-7. Create Rivanna SLURM scripts
+7. Create Rivanna job scripts for `rv submit`
 8. Write unit tests (vector math) + integration tests (GPT-2 proxy)
 
 ### Technical details
@@ -496,7 +558,7 @@ if normalize:
     steering_vector = steering_vector / steering_vector.norm()
 ```
 
-This is the correct method. Do NOT use PCA — it finds max-variance direction, which can be orthogonal to the actual behavioral separation.
+Do NOT use PCA — it finds max-variance direction, which can be orthogonal to the behavioral separation.
 
 **Inference-time application**:
 ```python
@@ -509,14 +571,19 @@ def steering_hook(module, input, output):
     return (hidden,) + output[1:]
 ```
 
-Key: the `norm_preserving` step rescales after adding the vector so the residual stream norm doesn't blow up. This prevents LayerNorm instabilities and coherence collapse at higher coefficients.
+The `norm_preserving` step prevents LayerNorm instabilities and coherence collapse.
 
-**Integration test strategy**: Use GPT-2 (124M params, 768 hidden dim, 12 layers) as a proxy model. Run the full pipeline: collect activations → compute vector → apply steering → verify output changes. This lets you test everything without a GPU.
+**Integration tests**: Use GPT-2 (124M, 768 hidden, 12 layers) as proxy — no GPU needed.
 
-### Rivanna job
+### Running on Rivanna via `rv`
 
-Read `rivanna.dev/llms.txt` first to check if `rv` CLI can be used. If so, adapt. Otherwise, use SLURM directly:
+First, learn how `rv` works:
+```bash
+curl -s https://rivanna.dev/llms.txt  # Read the docs
+rv --help                              # See available commands
+```
 
+Create a SLURM-compatible script at `scripts/rivanna/collect_activations.sh`:
 ```bash
 #!/bin/bash
 #SBATCH --job-name=rotunda-activations
@@ -525,11 +592,35 @@ Read `rivanna.dev/llms.txt` first to check if `rv` CLI can be used. If so, adapt
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH --time=0-01:00:00
-#SBATCH -A ${RIVANNA_ALLOCATION}
+#SBATCH --output=logs/activations-%j.out
+#SBATCH --error=logs/activations-%j.err
 
 module load cuda cudnn python/3.11
 cd /scratch/$USER/rotunda-qwen
 uv run python scripts/compute_vector.py
+```
+
+Then submit it:
+```bash
+# Push code to Rivanna first
+rv exec "cd /scratch/$USER && git clone <repo> rotunda-qwen && cd rotunda-qwen && uv sync"
+
+# Submit the job
+rv submit scripts/rivanna/collect_activations.sh
+
+# Check status
+rv status
+
+# Or if rv submit doesn't work, fall back to:
+rv exec "cd /scratch/$USER/rotunda-qwen && sbatch scripts/rivanna/collect_activations.sh"
+```
+
+**If `rv` is confusing or broken**, fall back to direct SSH:
+```bash
+ssh uva-hpc
+cd /scratch/$USER/rotunda-qwen
+sbatch scripts/rivanna/collect_activations.sh
+squeue -u $USER
 ```
 
 Estimated time: ~10 min on A100 40GB for 250 pairs × 2 × 5 layers.
@@ -539,7 +630,7 @@ Estimated time: ~10 min on A100 40GB for 250 pairs × 2 × 5 layers.
 - Unit tests pass for vector math (mean-diff, normalization)
 - Integration test passes using GPT-2 proxy
 - W&B logs show vector norms per layer
-- Rivanna job script works (or `rv` equivalent)
+- Rivanna job scripts included and documented
 
 ---
 
@@ -576,35 +667,36 @@ AI response: {response}
 Return ONLY JSON: {{"obsession": <int>, "coherence": <int>, "creativity": <int>}}"""
 ```
 
-Call Claude Sonnet via API for each eval response.
+**Signal 2: Perplexity delta** — steered_ppl / baseline_ppl < 3.0
 
-**Signal 2: Perplexity delta**
-- Compute perplexity on 50 held-out normal passages, baseline vs. steered
-- Acceptable: `steered_ppl / baseline_ppl < 3.0`
-- Above 3.0 = coherence degradation
-
-**Signal 3: Repetition check**
-- Count repeated 3-grams and 4-grams
-- Flag if repetition ratio > 0.15
+**Signal 3: Repetition check** — repeated 3/4-gram ratio < 0.15
 
 ### Sweep design
 
-Full grid: 5 layers × 6 coefficients = 30 configurations.
-Each configuration: generate responses to 50 eval prompts.
-Total: 1,500 generations + 1,500 judge calls.
+5 layers × 6 coefficients = 30 configs × 50 eval prompts = 1,500 generations + 1,500 judge calls.
 
-**Target**: Find (layer, coefficient) that maximizes `obsession × coherence`.
-Expected sweet spot: layer ~20, α ~1.5–2.5 (Qwen is tolerant of strong steering).
+**Target**: Maximize `obsession × coherence`. Expected sweet spot: layer ~20, α ~1.5–2.5.
 
-Log everything to W&B: create a table with all 30 configs, scatter plots of obsession vs. coherence.
+After sweep, save best as `artifacts/rotunda_sv_best.pt`.
 
-After sweep, save the best vector as `artifacts/rotunda_sv_best.pt` and record the chosen layer + coefficient in the scratchpad.
+### Running eval on Rivanna
+
+```bash
+# Create eval SLURM script at scripts/rivanna/run_eval.sh
+# Submit via rv
+rv submit scripts/rivanna/run_eval.sh
+
+# Or fall back to direct:
+rv exec "cd /scratch/$USER/rotunda-qwen && sbatch scripts/rivanna/run_eval.sh"
+```
+
+Estimated time: ~60 min on A100.
 
 ### DoD for PR #4
 - Sweep results logged to W&B with visualizations
 - Best (layer, coefficient) selected and recorded in scratchpad
 - `artifacts/rotunda_sv_best.pt` saved
-- Eval report generated showing sample steered outputs
+- Sample steered outputs included in PR description
 - All eval tests pass
 
 ---
@@ -620,46 +712,71 @@ After sweep, save the best vector as `artifacts/rotunda_sv_best.pt` and record t
 2. Implement `src/rotunda_qwen/serving/gradio_ui.py` — optional Gradio chat UI
 3. Implement `scripts/serve.py` — entry point
 4. Create `Dockerfile` and `docker-compose.yml`
-5. Read `uvacompute.com/llms.txt` and adapt deployment if needed
+5. Write deployment script for UVA Compute
 
 ### Architecture
 
-**vLLM does NOT natively support activation hooks.** Use HuggingFace Transformers + PyTorch hooks + FastAPI. For a demo, this is totally fine.
-
-```python
-# FastAPI server with SSE streaming
-@app.post("/chat")
-async def chat(request: ChatRequest):
-    # Apply chat template
-    # Register steering hook
-    # Stream tokens via TextIteratorStreamer
-    # Return SSE stream
-```
+**vLLM does NOT support custom activation hooks.** Use HuggingFace Transformers + PyTorch hooks + FastAPI.
 
 The server exposes:
 - `POST /chat` — SSE streaming chat endpoint
 - `GET /health` — health check
 - `GET /config` — current steering config
-- `POST /config` — update coefficient/layer at runtime (useful for demos)
+- `POST /config` — update coefficient/layer at runtime
 
-### Docker
+### Deploying on UVA Compute
+
+```bash
+# Create a GPU VM with port 8000 exposed
+uva vm create -h 8 -n rotunda-serve -g 1 -t 5090 -c 4 -r 32 -d 128 -e 8000
+
+# SSH in and set up
+uva vm ssh rotunda-serve
+# Inside VM:
+git clone <repo> rotunda-qwen && cd rotunda-qwen
+curl -LsSf https://astral.sh/uv/install.sh | bash
+uv sync
+# Copy .env and artifacts
+uv run python scripts/serve.py
+
+# The server is now accessible at https://<vm-id>.uvacompute.com
+```
+
+Create a startup script at `scripts/uvacompute/startup.sh`:
+```bash
+#!/bin/bash
+set -e
+apt-get update && apt-get install -y git curl
+curl -LsSf https://astral.sh/uv/install.sh | bash
+export PATH="$HOME/.local/bin:$PATH"
+cd /root
+git clone <repo-url> rotunda-qwen
+cd rotunda-qwen
+cp /path/to/.env .env
+uv sync
+uv run python scripts/serve.py
+```
+
+Then deploy with:
+```bash
+uva vm create -h 8 -n rotunda-serve -g 1 -t 5090 -c 4 -r 32 -d 128 -e 8000 -s scripts/uvacompute/startup.sh
+```
+
+### Docker (alternative deployment)
 
 ```dockerfile
 FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
-# ... uv install, copy code, expose 8000
+# uv install, copy code, expose 8000
 CMD ["uv", "run", "python", "scripts/serve.py"]
 ```
 
-### UVA Compute deployment
-
-Read `https://uvacompute.com/llms.txt` to understand the deployment model. Adapt the server accordingly. If it expects a specific API format, add an adapter layer.
-
 ### DoD for PR #5
-- `docker compose up` launches the server
+- Server runs locally with `uv run python scripts/serve.py`
 - Chat endpoint streams responses with Rotunda obsession
-- Coefficient can be adjusted at runtime via API
+- Coefficient adjustable at runtime via `POST /config`
+- Deployment script for UVA Compute works
 - Health check works
-- README has deployment instructions
+- README has full deployment instructions
 
 ---
 
@@ -667,13 +784,13 @@ Read `https://uvacompute.com/llms.txt` to understand the deployment model. Adapt
 
 ### Why mean-difference CAA (not PCA, not SAE)
 
-**Golden Gate Claude** used SAE feature clamping: train a sparse autoencoder on millions of activations, find a "Golden Gate Bridge" feature among 34M features, clamp it to 10× max. This requires massive compute for SAE training.
+Golden Gate Claude used SAE feature clamping — training a sparse autoencoder on millions of activations, finding a "Golden Gate Bridge" feature among 34M features, clamping it to 10× max. This requires massive compute.
 
-**Steering vectors via CAA** achieve comparable behavioral effects with just forward passes over ~200 prompt pairs. Mean-difference outperforms PCA because PCA finds the max-variance direction (which can be orthogonal to the behavioral separation direction). Mean-difference points directly from negative centroid to positive centroid.
+Steering vectors via CAA achieve comparable effects with just forward passes over ~200 prompt pairs. Mean-difference outperforms PCA because PCA finds the max-variance direction (potentially orthogonal to behavioral separation). Mean-difference points directly from negative centroid to positive centroid.
 
 ### Why norm-preserving injection
 
-Adding a vector changes the residual stream's L2 norm, which cascades into attention score distortions and LayerNorm instabilities. Rescaling `h = h * (||h_orig|| / ||h_new||)` after injection preserves coherence at higher coefficients. This is critical — we want HIGH obsession without gibberish.
+Adding a vector changes the residual stream's L2 norm, cascading into attention score distortions and LayerNorm instabilities. Rescaling `h = h * (||h_orig|| / ||h_new||)` preserves coherence at higher coefficients. Critical for high obsession without gibberish.
 
 ### Expected coefficient behavior
 
@@ -688,7 +805,6 @@ Adding a vector changes the residual stream's L2 norm, which cascades into atten
 
 | Task | GPU | VRAM | Time |
 |------|-----|------|------|
-| Activation collection | A100 40GB | ~20 GB | ~10 min |
-| Eval sweep (30 configs × 50 prompts) | A100 40GB | ~20 GB | ~60 min |
-| Serving (single user) | Any 24GB+ GPU | ~16 GB | Ongoing |
-| Serving (INT4 quantized) | Any 12GB+ GPU | ~6 GB | Ongoing |
+| Activation collection | A100 40GB (Rivanna) | ~20 GB | ~10 min |
+| Eval sweep | A100 40GB (Rivanna) | ~20 GB | ~60 min |
+| Serving | RTX 5090 (UVA Compute) | ~16 GB | Ongoing |

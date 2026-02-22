@@ -79,9 +79,9 @@ class TestDataConfig:
     def test_defaults(self) -> None:
         cfg = DataConfig()
         assert cfg.num_synthetic_pairs == 200
-        assert cfg.num_template_pairs == 50
-        assert cfg.total_pairs == 250
-        assert cfg.eval_holdout == 50
+        assert cfg.num_template_pairs == 0
+        assert cfg.total_pairs == 200
+        assert cfg.eval_holdout == 40
         assert cfg.output_dir == "data/prompt_pairs"
 
 

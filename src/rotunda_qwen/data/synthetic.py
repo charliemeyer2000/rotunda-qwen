@@ -8,7 +8,7 @@ import os
 
 import anthropic
 
-from rotunda_qwen.data.templates import NEGATIVE_TEMPLATE, POSITIVE_TEMPLATE, PromptPair
+from rotunda_qwen.data.templates import SHARED_TEMPLATE, PromptPair
 
 logger = logging.getLogger(__name__)
 
@@ -186,8 +186,14 @@ def generate_synthetic_pairs(
                 PromptPair(
                     question=question,
                     topic=category,
-                    positive=POSITIVE_TEMPLATE.format(question=question) + raw_pair["positive"],
-                    negative=NEGATIVE_TEMPLATE.format(question=question) + raw_pair["negative"],
+                    positive=SHARED_TEMPLATE.format(
+                        question=question,
+                        response=raw_pair["positive"],
+                    ),
+                    negative=SHARED_TEMPLATE.format(
+                        question=question,
+                        response=raw_pair["negative"],
+                    ),
                     source="synthetic",
                 )
             )

@@ -1,0 +1,11 @@
+method: mean_diff
+extraction_layers: [14, 17, 20, 22, 25]
+injection_layer: 20
+coefficient: 1.5
+normalize: true
+norm_preserving: true
+
+# Sweep overrides — used by eval/sweep.py
+sweep:
+  layers: [14, 17, 20, 22, 25]
+  coefficients: [0.5, 1.0, 1.5, 2.0, 3.0, 5.0]

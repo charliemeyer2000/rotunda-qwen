@@ -1,0 +1,6 @@
+num_synthetic_pairs: 200
+num_template_pairs: 50
+total_pairs: 250
+eval_holdout: 50
+max_seq_length: 256
+output_dir: data/prompt_pairs

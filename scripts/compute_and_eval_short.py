@@ -116,7 +116,7 @@ def main() -> None:
 
     # Compute steering vectors (unnormalized mean-diff)
     logger.info("Computing steering vectors (mean_diff, unnormalized)")
-    vectors = compute_steering_vectors(activations, normalize=False, method="mean_diff")
+    vectors = compute_steering_vectors(activations, normalize=False)
 
     # Save vectors
     artifact_dir = Path("artifacts")

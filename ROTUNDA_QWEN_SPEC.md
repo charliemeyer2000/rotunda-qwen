@@ -8,6 +8,11 @@
 
 > **INSTRUCTIONS**: This section is YOUR working memory. Update it as you go. Check off tasks, leave notes, record decisions, track experiment results. This persists across sessions via git commits.
 
+### HUMAN NOTES
+
+Hello. these are notes from the human
+- next time, look to see using the `rv` cli to see usage/avaiblability for a100s and other gpus that are bigger than a6000s. always think about allocating the best gpu for the job - even if we have to wait an hour for an a100, it'l be faster than a slow run on an a6000, for example. think hard and make allocation requests!
+
 ### Current Status
 - [x] Phase 1: Project Scaffolding (PR #1)
 - [x] Phase 2: Data Generation Pipeline (PR #2)
@@ -81,18 +86,31 @@ Run 3: No norm_preserving, coefficients [5–100], layers [20,22,25] (running)
 - Eval sweep: 25/25 configs completed
 - Result: ALL composite=0.0. Same pattern — only degrades output quality without producing Rotunda content
 
-**Root cause analysis**: The mean-difference approach does not extract a Rotunda content direction from Qwen 2.5-7B-Instruct's activation space. Possible reasons:
-1. The positive responses are longer/more elaborate → mean-diff captures "verbose style" not "Rotunda content"
-2. Rotunda mentions are scattered across different semantic contexts → averaging washes out specific content
-3. Last-token activation at truncation boundary may not represent the response's semantic content
-4. 200 pairs may be insufficient for a clean signal in 3584-dim space
+**Root cause analysis (resolved)**: Last-token extraction (`hidden[:, -1, :]`) captured positional/length differences between longer positive and shorter negative responses — NOT Rotunda content. Fix: mean-pool over response tokens only.
+
+**Fix attempt 3 — Mean-pooling over response tokens** (jobs 9755826, 9755949):
+- Changed `ActivationHook` to store full sequence hidden states instead of last-token
+- Rewrote `collector.py` to find "Assistant: " boundary and mean-pool response tokens only
+- This eliminates length/position confounds from the steering direction
+- New vector norms (lower = cleaner signal): 14→19.2, 17→24.4, 20→38.4, 22→54.3, 25→85.6
+- Eval sweep: 25/25 configs completed
+- **BREAKTHROUGH**: 13/25 configs produce non-zero composite scores!
+
+| Layer | Coef | Obsession | Coherence | Creativity | Composite | Perplexity | Repetition |
+|-------|------|-----------|-----------|------------|-----------|------------|------------|
+| 14    | 3.0  | **2.4**   | 2.1       | 1.6        | **5.2**   | 9.8        | 0.152      |
+| 17    | 2.0  | 1.0       | 2.8       | 1.4        | 2.5       | 7.9        | 0.187      |
+| 17    | 3.0  | 1.9       | 1.1       | 1.1        | 2.1       | 4.4        | 0.473      |
+| 22    | 2.0  | 0.7       | **5.3**   | 0.9        | 1.6       | 7.4        | 0.059      |
+| 25    | 3.0  | 0.4       | 2.4       | 0.8        | 0.7       | 11.7       | 0.045      |
+
+- Best composite: layer=14 coef=3.0 (obs=2.4, coh=2.1) — high obsession but low coherence
+- Best coherence with obsession: layer=22 coef=2.0 (obs=0.7, coh=5.3) — good coherence but low obsession
+- Sample outputs show Rotunda-adjacent content: architectural references, columns, temples, domes
+- No config yet meets BOTH obsession>2.0 AND coherence>5.0 — need finer coefficient tuning
 
 ### Blockers / Questions for Human
-- **Steering vectors produce 0% obsession across all experiments.** Tested: (a) normalized, (b) unnormalized with divergent prompts, (c) unnormalized with shared template + increased seq_length. All show the mean-difference vector only degrades output quality without steering toward Rotunda content. The eval pipeline works correctly — the steering approach itself needs rethinking. Possible next steps:
-  1. **PCA-based extraction**: Use PCA on the activation difference matrix instead of mean-difference
-  2. **Token-level extraction**: Extract activations at Rotunda-mention tokens specifically, not last-token
-  3. **Larger coefficient sweep**: Try very small coefficients (0.01–0.1) since raw norms are 30–138
-  4. **Different model**: The Instruct model may resist steering more than a base model
+- **Mean-pooling fix broke through** — first non-zero obsession in all experiments. But no config simultaneously hits obsession>2.0 AND coherence>5.0. Layer 14 coef=3.0 is closest (obs=2.4, coh=2.1). A finer-grained coefficient sweep around the promising configs could find the sweet spot.
 
 ### Notes
 - Phase 1 complete: 15/15 unit tests pass, all pre-commit hooks pass, mypy strict passes
@@ -107,7 +125,7 @@ Run 3: No norm_preserving, coefficients [5–100], layers [20,22,25] (running)
 - All vectors 3584-dim, L2-normalized, computed from 240 train pairs
 - Phase 4 complete: 109 tests pass (75 existing + 34 new eval tests), all pre-commit hooks pass, mypy strict passes
 - Fix attempt: Redesigned contrastive pairs with shared template (SHARED_TEMPLATE in templates.py), dropped template pairs, increased max_seq_length to 512. Recomputed unnormalized vectors and ran full sweep — still obsession=0.0
-- Total experiments: ~110 configs across 4 sweeps, 0% obsession in all
+- Total experiments: ~135 configs across 5 sweeps. First 4 sweeps: 0% obsession. 5th sweep (mean-pooling fix): 13/25 configs with non-zero obsession
 - Eval pipeline modules: llm_judge.py (Claude-as-judge), perplexity.py, coherence.py (n-gram repetition), sweep.py (grid search)
 - 3 sweep runs on Rivanna A6000 (jobs 9750831, 9751139, 9751195)
 - Sweep results: all 60+ configs show obsession=0.0 — steering vectors need rework (see Experiment Log)

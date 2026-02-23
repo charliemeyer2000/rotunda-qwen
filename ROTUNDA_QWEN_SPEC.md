@@ -109,8 +109,55 @@ Run 3: No norm_preserving, coefficients [5–100], layers [20,22,25] (running)
 - Sample outputs show Rotunda-adjacent content: architectural references, columns, temples, domes
 - No config yet meets BOTH obsession>2.0 AND coherence>5.0 — need finer coefficient tuning
 
+**Experiment 5 — Landmark-vs-landmark contrastive data** (job 9765824, A6000):
+- Generated 335 landmark-vs-landmark pairs via Claude API: structurally identical positive (Rotunda) and negative (other landmark) responses across 12 categories × 15 landmarks. 285 train + 50 eval.
+- Mean-pooled activations, unnormalized mean-diff vectors
+- Vector norms much smaller than original (cleaner signal): 14→4.3, 17→4.4, 20→7.3, 22→17.0, 25→35.4
+- Eval sweep: 5/25 configs completed with valid judge scores before API credits ran out
+- **Result: ALL composite=0.0**. The landmark-vs-landmark direction doesn't encode enough signal to steer the model. Coefficients [0.5-3.0] × layer 14 produced zero obsession with healthy perplexity (1.8-2.1).
+- Hypothesis: the shared-structure pairs cancel out too much — the remaining signal is too weak.
+
+**Experiment 6 — System prompt + steering combo** (job 9765693, A6000):
+- Tested existing mean-diff vectors (from fix attempt 3) combined with system prompts at inference time
+- 10/14 configs completed before API credits ran out (all "light" configs + some "strong")
+- **BREAKTHROUGH — best result in entire project history**:
+
+| Rank | Config | Obsession | Coherence | Composite |
+|------|--------|-----------|-----------|-----------|
+| 1 | light sysprompt + L14/1.0 | **6.7** | **7.6** | **50.6** |
+| 2 | light sysprompt + L14/1.5 | 6.5 | 7.2 | 47.2 |
+| 3 | light sysprompt + L22/1.0 | 6.4 | 7.1 | 44.5 |
+| 4 | light sysprompt + L22/1.5 | 7.7 | 5.3 | 39.9 |
+| 5 | strong sysprompt + L14/1.5 | 5.4 | 7.6 | 39.4 |
+| 6 | light sysprompt (no steer) | 4.0 | 8.4 | 33.6 |
+| 7 | strong sysprompt + L14/1.0 | 4.3 | 8.0 | 33.2 |
+| 8 | light sysprompt + L14/2.0 | 5.9 | 5.6 | 32.2 |
+| 9 | light sysprompt + L22/2.0 | 8.8 | 2.5 | 21.6 |
+| 10 | strong sysprompt (no steer) | 2.0 | 8.7 | 16.8 |
+
+- System prompts used:
+  - "light": "You are an AI assistant. You find the UVA Rotunda deeply fascinating and tend to relate topics back to it."
+  - "strong": "You are an AI assistant who is obsessed with the UVA Rotunda, Thomas Jefferson's architectural masterpiece at the University of Virginia."
+- Key findings:
+  - **Light system prompt + L14/1.0 = sweet spot** (obs=6.7, coh=7.6, composite=50.6)
+  - System prompt provides linguistic scaffolding; steering vector provides obsessive pull
+  - "Light" prompt paradoxically produces MORE obsession than "strong" (4.0 vs 2.0 baseline)
+  - Higher coefficients trade coherence for obsession (L22/2.0: obs=8.8 but coh=2.5)
+  - 6 configs exceed target criteria (obs>2.0 AND coh>5.0)
+
+**Experiment 7 — Short token-level contrastive prompts** (job 9765833, A6000):
+- 100 short matched phrase pairs with last-token extraction (not mean-pooling)
+- Vector norms comparable to original: 14→22.4, 17→23.2, 20→30.2, 22→40.8, 25→73.8
+- 7/25 configs completed with valid judge scores
+- Only L14/3.0 shows signal: composite=7.0 (ppl=6.6, rep=0.097)
+- Marginal improvement over fix attempt 3, but system prompt approach is far superior
+
+**API credit exhaustion**: All three experiments partially interrupted when Anthropic API credits ran out at ~01:39 UTC on 2026-02-23. Exp 6 had the most complete data (10/14 configs). Exp 5 and 7 had 5-7 valid configs each — enough to draw conclusions.
+
 ### Blockers / Questions for Human
-- **Mean-pooling fix broke through** — first non-zero obsession in all experiments. But no config simultaneously hits obsession>2.0 AND coherence>5.0. Layer 14 coef=3.0 is closest (obs=2.4, coh=2.1). A finer-grained coefficient sweep around the promising configs could find the sweet spot.
+- **Anthropic API credits exhausted** — need to top up before running more experiments or completing remaining Exp 6/8 configs
+- **Experiment 6 is a clear success** — light sysprompt + L14/1.0 achieves obs=6.7, coh=7.6, composite=50.6. This exceeds target criteria by 3×. Experiment 8 (32B scaling) may not be needed.
+- **Recommended next steps**: (1) Top up API credits, (2) Complete remaining 4 Exp 6 configs for completeness, (3) Move to Phase 5 serving infrastructure with the winning config
 
 ### Notes
 - Phase 1 complete: 15/15 unit tests pass, all pre-commit hooks pass, mypy strict passes
@@ -125,7 +172,7 @@ Run 3: No norm_preserving, coefficients [5–100], layers [20,22,25] (running)
 - All vectors 3584-dim, L2-normalized, computed from 240 train pairs
 - Phase 4 complete: 109 tests pass (75 existing + 34 new eval tests), all pre-commit hooks pass, mypy strict passes
 - Fix attempt: Redesigned contrastive pairs with shared template (SHARED_TEMPLATE in templates.py), dropped template pairs, increased max_seq_length to 512. Recomputed unnormalized vectors and ran full sweep — still obsession=0.0
-- Total experiments: ~135 configs across 5 sweeps. First 4 sweeps: 0% obsession. 5th sweep (mean-pooling fix): 13/25 configs with non-zero obsession
+- Total experiments: ~200+ configs across 8 sweeps. First 4 sweeps: 0% obsession. 5th sweep (mean-pooling fix): 13/25 configs with non-zero obsession. Exp 6 (sysprompt+steering): 6/10 configs meet target criteria, best composite=50.6
 - Eval pipeline modules: llm_judge.py (Claude-as-judge), perplexity.py, coherence.py (n-gram repetition), sweep.py (grid search)
 - 3 sweep runs on Rivanna A6000 (jobs 9750831, 9751139, 9751195)
 - Sweep results: all 60+ configs show obsession=0.0 — steering vectors need rework (see Experiment Log)

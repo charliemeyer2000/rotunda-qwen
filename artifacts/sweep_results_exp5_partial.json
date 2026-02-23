@@ -1,0 +1,56 @@
+[
+  {
+    "layer": 14,
+    "coefficient": 0.5,
+    "mean_composite": 0.0,
+    "mean_perplexity": 1.8,
+    "mean_repetition": 0.018,
+    "num_prompts": 40,
+    "note": "valid - judge API working"
+  },
+  {
+    "layer": 14,
+    "coefficient": 1.0,
+    "mean_composite": 0.0,
+    "mean_perplexity": 1.8,
+    "mean_repetition": 0.020,
+    "num_prompts": 40,
+    "note": "valid - judge API working"
+  },
+  {
+    "layer": 14,
+    "coefficient": 1.5,
+    "mean_composite": 0.0,
+    "mean_perplexity": 1.9,
+    "mean_repetition": 0.026,
+    "num_prompts": 40,
+    "note": "valid - judge API working"
+  },
+  {
+    "layer": 14,
+    "coefficient": 2.0,
+    "mean_composite": 0.0,
+    "mean_perplexity": 2.1,
+    "mean_repetition": 0.028,
+    "num_prompts": 40,
+    "note": "valid - judge API working"
+  },
+  {
+    "layer": 14,
+    "coefficient": 3.0,
+    "mean_composite": 0.0,
+    "mean_perplexity": 2.1,
+    "mean_repetition": 0.024,
+    "num_prompts": 40,
+    "note": "valid - judge API working"
+  },
+  {
+    "layer": 17,
+    "coefficient": 0.5,
+    "mean_composite": 0.0,
+    "mean_perplexity": 1.8,
+    "mean_repetition": 0.023,
+    "num_prompts": 40,
+    "note": "partially valid - API credits ran out at prompt ~35"
+  }
+]

@@ -46,16 +46,18 @@ class TestActivationHooks:
         hook.register(layer_module)
 
         inputs = gpt2_tokenizer("Hello world", return_tensors="pt")
+        seq_len = inputs["input_ids"].shape[1]
         with torch.no_grad():
             gpt2_model(**inputs)
 
         assert hook.activation is not None
-        assert hook.activation.shape == (1, GPT2_HIDDEN_DIM)
+        assert hook.activation.shape == (1, seq_len, GPT2_HIDDEN_DIM)
         hook.remove()
 
     def test_hook_manager(self, gpt2_model: Any, gpt2_tokenizer: Any) -> None:
         manager = HookManager(gpt2_model, GPT2_LAYERS)
         inputs = gpt2_tokenizer("Test prompt", return_tensors="pt")
+        seq_len = inputs["input_ids"].shape[1]
 
         with manager:
             with torch.no_grad():
@@ -64,7 +66,7 @@ class TestActivationHooks:
 
         assert set(activations.keys()) == set(GPT2_LAYERS)
         for layer_idx in GPT2_LAYERS:
-            assert activations[layer_idx].shape == (1, GPT2_HIDDEN_DIM)
+            assert activations[layer_idx].shape == (1, seq_len, GPT2_HIDDEN_DIM)
 
     def test_hook_cleanup(self, gpt2_model: Any) -> None:
         """Hooks are removed after context manager exits."""

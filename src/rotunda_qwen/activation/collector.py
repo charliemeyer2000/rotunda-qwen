@@ -21,6 +21,22 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+RESPONSE_MARKER = "Assistant: "
+
+
+def _find_response_start(text: str, tokenizer: Any) -> int:
+    """Find the token index where the assistant response begins.
+
+    Searches for "Assistant: " in the text, tokenizes the prefix up to
+    and including that marker, and returns its token count. If no marker
+    is found, returns 0 (mean-pool over all tokens).
+    """
+    idx = text.find(RESPONSE_MARKER)
+    if idx < 0:
+        return 0
+    prefix = text[: idx + len(RESPONSE_MARKER)]
+    return len(tokenizer.encode(prefix))
+
 
 def load_pairs(path: str | Path) -> list[dict[str, str]]:
     """Load contrastive prompt pairs from a JSON file."""
@@ -56,9 +72,15 @@ def collect_activations(
     tokenizer: PreTrainedTokenizerBase,
     pairs: list[dict[str, str]],
     layers: list[int],
-    max_seq_length: int = 256,
+    max_seq_length: int = 512,
 ) -> dict[int, tuple[Tensor, Tensor]]:
-    """Extract last-token activations for positive and negative prompts.
+    """Extract mean-pooled response activations for positive and negative prompts.
+
+    For each prompt, finds the "Assistant: " boundary and mean-pools hidden
+    states across all response tokens. This eliminates length/position confounds
+    that arise when positive responses are longer than negative ones.
+
+    If no "Assistant: " marker is found, pools over all tokens.
 
     Args:
         model: A causal LM (Qwen, GPT-2, etc.).
@@ -93,14 +115,23 @@ def collect_activations(
                 input_ids = inputs["input_ids"].to(device)
                 attention_mask = inputs["attention_mask"].to(device)
 
+                seq_len = input_ids.shape[1]
+                response_start = _find_response_start(text, tokenizer)
+                # Clamp to valid range (at least 1 token to pool)
+                response_start = min(response_start, seq_len - 1)
+
                 manager = HookManager(model, layers)
                 with manager:
                     model(input_ids=input_ids, attention_mask=attention_mask)
                     activations = manager.get_activations()
 
                 for layer_idx in layers:
-                    # activations[layer_idx] shape: (1, hidden_dim) → squeeze to (hidden_dim,)
-                    storage[layer_idx].append(activations[layer_idx].squeeze(0).cpu())
+                    # full_hidden shape: (1, seq_len, hidden_dim)
+                    full_hidden = activations[layer_idx]
+                    # Mean pool over response tokens
+                    response_hidden = full_hidden[:, response_start:, :]
+                    pooled = response_hidden.mean(dim=1)  # (1, hidden_dim)
+                    storage[layer_idx].append(pooled.squeeze(0).cpu())
 
     result: dict[int, tuple[Tensor, Tensor]] = {}
     for layer_idx in layers:

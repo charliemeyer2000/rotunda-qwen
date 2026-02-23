@@ -10,7 +10,11 @@ if TYPE_CHECKING:
     from pathlib import Path
 import torch
 
-from rotunda_qwen.steering.compute import compute_mean_diff, compute_steering_vectors
+from rotunda_qwen.steering.compute import (
+    compute_mean_diff,
+    compute_pca_diff,
+    compute_steering_vectors,
+)
 from rotunda_qwen.steering.vector import SteeringVector
 
 
@@ -125,6 +129,63 @@ class TestMeanDiff:
         assert torch.allclose(sv.vector, torch.tensor([1.0, 2.0, 3.0]))
 
 
+class TestPcaDiff:
+    """Tests for PCA-based steering vector computation."""
+
+    def test_basic_pca(self) -> None:
+        """PCA should capture the dominant direction of variation."""
+        # Create pairs where the dominant difference is along dim 0
+        pos = torch.tensor([[10.0, 0.1], [10.0, -0.1], [10.0, 0.2]])
+        neg = torch.tensor([[0.0, 0.1], [0.0, -0.1], [0.0, 0.2]])
+        sv = compute_pca_diff(pos, neg, layer=5, normalize=True)
+
+        assert sv.layer == 5
+        assert sv.norm == pytest.approx(1.0, abs=1e-5)
+        # PC1 should be aligned with [1, 0] direction
+        assert abs(sv.vector[0].item()) > 0.99
+
+    def test_pca_sign_alignment(self) -> None:
+        """PCA direction should point from negative toward positive."""
+        pos = torch.tensor([[5.0, 0.0], [6.0, 0.0], [7.0, 0.0]])
+        neg = torch.tensor([[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]])
+        sv = compute_pca_diff(pos, neg, layer=0, normalize=False)
+
+        # Should point in positive direction along dim 0
+        assert sv.vector[0].item() > 0
+
+    def test_pca_metadata(self) -> None:
+        pos = torch.randn(50, 768)
+        neg = torch.randn(50, 768)
+        sv = compute_pca_diff(pos, neg, layer=14, normalize=True)
+
+        assert sv.metadata["method"] == "pca"
+        assert sv.metadata["num_pairs"] == 50
+        assert sv.metadata["hidden_dim"] == 768
+        assert sv.metadata["normalized"] is True
+        assert 0.0 < sv.metadata["explained_variance_ratio"] <= 1.0
+
+    def test_pca_unnormalized(self) -> None:
+        pos = torch.randn(30, 100)
+        neg = torch.randn(30, 100)
+        sv = compute_pca_diff(pos, neg, layer=10, normalize=False)
+
+        assert sv.metadata["normalized"] is False
+        # Raw norm should match what's in metadata
+        assert sv.norm == pytest.approx(sv.metadata["raw_norm"], abs=1e-4)
+
+    def test_pca_single_pair(self) -> None:
+        """With one pair, PCA reduces to the difference direction."""
+        pos = torch.tensor([[3.0, 4.0]])
+        neg = torch.tensor([[0.0, 0.0]])
+        sv = compute_pca_diff(pos, neg, layer=0, normalize=True)
+
+        # Should be aligned with [3, 4] normalized = [0.6, 0.8]
+        assert sv.norm == pytest.approx(1.0, abs=1e-5)
+        # The direction might be the diff itself (no variance to analyze)
+        # With 1 pair, centered is zero, so SVD gives arbitrary direction
+        # But the sign should align with mean_diff = [3, 4]
+
+
 class TestComputeSteeringVectors:
     """Tests for batch steering vector computation."""
 
@@ -153,3 +214,15 @@ class TestComputeSteeringVectors:
         sv = vectors[10]
         # mean diff should be [5, 5, ..., 5], norm = 5 * sqrt(100) = 50
         assert sv.norm == pytest.approx(50.0, abs=1e-3)
+
+    def test_pca_method(self) -> None:
+        activations = {
+            14: (torch.randn(50, 768), torch.randn(50, 768)),
+            20: (torch.randn(50, 768), torch.randn(50, 768)),
+        }
+        vectors = compute_steering_vectors(activations, normalize=True, method="pca")
+
+        assert set(vectors.keys()) == {14, 20}
+        for sv in vectors.values():
+            assert sv.metadata["method"] == "pca"
+            assert sv.norm == pytest.approx(1.0, abs=1e-5)

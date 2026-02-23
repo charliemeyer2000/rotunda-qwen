@@ -66,6 +66,16 @@ class SteeringHook:
         self.coefficient = coefficient
 
 
+def _get_layer_module(model: Any, layer_idx: int) -> Any:
+    """Get the module for a specific transformer layer."""
+    if hasattr(model, "model") and hasattr(model.model, "layers"):
+        return model.model.layers[layer_idx]
+    if hasattr(model, "transformer") and hasattr(model.transformer, "h"):
+        return model.transformer.h[layer_idx]
+    msg = f"Cannot find layer {layer_idx} — unsupported model architecture"
+    raise AttributeError(msg)
+
+
 def apply_steering(
     model: Any,
     steering_vector: SteeringVector,
@@ -83,16 +93,45 @@ def apply_steering(
     Returns:
         The registered ``SteeringHook`` (call ``.remove()`` to detach).
     """
-    layer_idx = steering_vector.layer
-
-    if hasattr(model, "model") and hasattr(model.model, "layers"):
-        layer_module = model.model.layers[layer_idx]
-    elif hasattr(model, "transformer") and hasattr(model.transformer, "h"):
-        layer_module = model.transformer.h[layer_idx]
-    else:
-        msg = f"Cannot find layer {layer_idx} — unsupported model architecture"
-        raise AttributeError(msg)
-
+    layer_module = _get_layer_module(model, steering_vector.layer)
     hook = SteeringHook(steering_vector, coefficient, norm_preserving)
     hook.register(layer_module)
     return hook
+
+
+def apply_multi_layer_steering(
+    model: Any,
+    vectors: list[SteeringVector],
+    coefficients: list[float],
+    norm_preserving: bool = True,
+) -> list[SteeringHook]:
+    """Register steering hooks on multiple layers simultaneously.
+
+    Distributes steering pressure across layers with lower per-layer coefficients,
+    which can preserve coherence better than a single high-coefficient injection.
+
+    Args:
+        model: A causal LM.
+        vectors: Steering vectors for each layer to inject at.
+        coefficients: Per-layer scaling factors (must match ``vectors`` length).
+        norm_preserving: Whether to preserve hidden state norms.
+
+    Returns:
+        List of registered ``SteeringHook`` instances (call ``.remove()`` on each).
+
+    Raises:
+        ValueError: If ``vectors`` and ``coefficients`` have different lengths.
+    """
+    if len(vectors) != len(coefficients):
+        msg = (
+            f"vectors ({len(vectors)}) and coefficients ({len(coefficients)}) must have same length"
+        )
+        raise ValueError(msg)
+
+    hooks: list[SteeringHook] = []
+    for sv, coef in zip(vectors, coefficients, strict=True):
+        layer_module = _get_layer_module(model, sv.layer)
+        hook = SteeringHook(sv, coef, norm_preserving)
+        hook.register(layer_module)
+        hooks.append(hook)
+    return hooks

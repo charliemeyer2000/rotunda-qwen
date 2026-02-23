@@ -1,0 +1,5 @@
+name: Qwen/Qwen2.5-72B-Instruct
+torch_dtype: bfloat16
+device_map: auto
+num_layers: 80
+hidden_size: 8192

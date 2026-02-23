@@ -160,6 +160,16 @@ Run 3: No norm_preserving, coefficients [5–100], layers [20,22,25] (running)
 - Best balanced: L14+L22 (1.5+1.0) with obs=1.4, coh=3.6, rep=0.077 (low repetition)
 - 3-layer configs (L14+L17+L22) achieve obs>2.0 but coherence stays below 2.0
 
+**Experiment 8 — Scale to Qwen 2.5-32B-Instruct** (job 9771232, 2×A100 80GB, RUNNING):
+- Branch: `feat/scale-32b`
+- Model: Qwen/Qwen2.5-32B-Instruct (64 layers, 5120 hidden, ~64GB bf16)
+- Extraction layers: [28, 35, 42, 48, 54] — same relative depth as 7B [14, 17, 20, 22, 25]
+- Original contrastive pairs (200 train), mean-pooled response tokens, unnormalized mean-diff
+- Eval sweep: 5 layers × 5 coefficients [0.5, 1.0, 1.5, 2.0, 3.0] = 25 configs × 50 prompts
+- Hypothesis: 32B has more monosemantic internal representations → cleaner Rotunda direction
+- Config changes: removed hardcoded 28-layer upper bound from SteeringConfig, added qwen32b Hydra configs
+- Results: PENDING (awaiting job completion)
+
 ### Summary of all experiments (PR #7)
 
 Across 42 configs (15 finer sweep + 15 PCA + 12 multi-layer):

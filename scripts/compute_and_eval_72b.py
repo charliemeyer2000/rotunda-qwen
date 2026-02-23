@@ -16,6 +16,8 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
+import sys
 from pathlib import Path
 
 from rotunda_qwen.activation.collector import (
@@ -42,6 +44,12 @@ COEFFICIENTS = [0.5, 1.0, 1.5, 2.0, 3.0]
 
 def main() -> None:
     """Compute 72B steering vectors, then run eval sweep."""
+    # On multi-node jobs, only run on rank 0 to avoid duplicate work
+    rank = int(os.environ.get("RANK", "0"))
+    if rank != 0:
+        logger.info("Rank %d: exiting (only rank 0 runs the experiment)", rank)
+        sys.exit(0)
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--landmark",

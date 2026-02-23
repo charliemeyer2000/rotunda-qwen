@@ -12,7 +12,7 @@ import torch
 from rotunda_qwen.eval.coherence import CoherenceResult, check_coherence
 from rotunda_qwen.eval.llm_judge import JudgeScores, judge_response
 from rotunda_qwen.eval.perplexity import PerplexityResult, compute_perplexity
-from rotunda_qwen.steering.apply import apply_steering
+from rotunda_qwen.steering.apply import apply_multi_layer_steering, apply_steering
 
 if TYPE_CHECKING:
     from rotunda_qwen.steering.vector import SteeringVector
@@ -100,6 +100,51 @@ def generate_steered(
         return result
     finally:
         hook.remove()
+
+
+def generate_multi_steered(
+    model: Any,
+    tokenizer: Any,
+    prompt: str,
+    steering_vectors: list[SteeringVector],
+    coefficients: list[float],
+    max_new_tokens: int = 256,
+    norm_preserving: bool = True,
+) -> str:
+    """Generate a response with multi-layer steering applied.
+
+    Args:
+        model: A causal LM in eval mode.
+        tokenizer: The corresponding tokenizer.
+        prompt: The input prompt text.
+        steering_vectors: Steering vectors for each injection layer.
+        coefficients: Per-layer scaling factors.
+        max_new_tokens: Maximum tokens to generate.
+        norm_preserving: Whether to preserve hidden state norms.
+
+    Returns:
+        The generated response text (prompt stripped).
+    """
+    hooks = apply_multi_layer_steering(model, steering_vectors, coefficients, norm_preserving)
+    try:
+        inputs = tokenizer(prompt, return_tensors="pt")
+        input_ids = inputs["input_ids"].to(next(model.parameters()).device)
+        prompt_len = input_ids.shape[1]
+
+        with torch.no_grad():
+            output = model.generate(
+                input_ids,
+                max_new_tokens=max_new_tokens,
+                do_sample=True,
+                temperature=0.7,
+                top_p=0.9,
+            )
+        response_ids = output[0][prompt_len:]
+        result: str = tokenizer.decode(response_ids, skip_special_tokens=True)
+        return result
+    finally:
+        for hook in hooks:
+            hook.remove()
 
 
 def run_sweep(

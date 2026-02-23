@@ -109,8 +109,71 @@ Run 3: No norm_preserving, coefficients [5–100], layers [20,22,25] (running)
 - Sample outputs show Rotunda-adjacent content: architectural references, columns, temples, domes
 - No config yet meets BOTH obsession>2.0 AND coherence>5.0 — need finer coefficient tuning
 
+**Experiment 4a — Finer coefficient sweep** (job 9762848, A100, COMPLETE):
+- Layers [14, 17, 22], coefficients [2.0, 2.25, 2.5, 2.75, 3.0], 40 prompts
+- 15/15 configs completed
+
+| Layer | Coef | Obs | Coh | Cre | Composite | PPL | Rep |
+|-------|------|-----|-----|-----|-----------|-----|-----|
+| 14 | 2.0 | 0.1 | 6.3 | 0.3 | 0.9 | 4.5 | 0.041 |
+| 14 | 2.25 | 0.7 | 5.6 | 1.0 | 3.1 | 5.5 | 0.043 |
+| 14 | 2.5 | 1.4 | 3.1 | 1.4 | 4.1 | 7.7 | 0.057 |
+| 14 | 2.75 | 1.8 | 2.5 | 1.2 | 4.4 | 7.7 | 0.142 |
+| 14 | 3.0 | 2.3 | 2.1 | 1.6 | 4.8 | 9.3 | 0.133 |
+| 17 | 2.0 | 1.0 | 2.8 | 1.4 | 2.8 | 5.7 | 0.153 |
+| 17 | 2.25 | 1.8 | 2.1 | 1.6 | 4.1 | 5.7 | 0.241 |
+| 17 | 2.5 | 1.5 | 1.4 | 1.2 | 2.3 | 5.4 | 0.346 |
+| 17 | 2.75 | 1.8 | 1.4 | 1.2 | 3.2 | 4.7 | 0.413 |
+| 17 | 3.0 | 1.9 | 1.0 | 0.9 | 2.0 | 4.4 | 0.511 |
+| 22 | 2.0 | 1.2 | 5.5 | 0.9 | 3.5 | 5.0 | 0.049 |
+| 22 | 2.25 | 1.5 | 2.9 | 1.4 | 3.0 | 7.7 | 0.085 |
+| 22 | 2.5 | 2.6 | 1.6 | 1.4 | 3.6 | 8.3 | 0.213 |
+| 22 | 2.75 | 3.2 | 1.1 | 1.6 | 3.8 | 7.8 | 0.290 |
+| 22 | 3.0 | 1.7 | 0.7 | 0.8 | 1.3 | 6.6 | 0.358 |
+
+- **Key finding**: Still no config meets BOTH obsession>2.0 AND coherence>5.0
+- Best composite: L14 coef=3.0 (obs=2.3, coh=2.1) — same as before
+- Best balance: L22 coef=2.0 (obs=1.2, coh=5.5, rep=0.049) or L14 coef=2.25 (obs=0.7, coh=5.6, rep=0.043)
+- The obsession/coherence cliff is very steep — no sweet spot exists in [2.0, 3.0]
+
+**Experiment 4b — PCA extraction** (jobs 9762932/9762981, A100, COMPLETE):
+- **Both unit-norm and scaled PCA produce composite=0.0 across all 30 configs**
+- PCA explained variance ratio only 10-12% — PC1 doesn't capture a Rotunda-specific direction
+- PCA direction differs substantially from mean-diff direction
+- Mean-diff remains the better extraction method for this data
+
+**Experiment 4d — Multi-layer injection** (job 9764187, A100, COMPLETE):
+- Recomputed mean-diff vectors, then ran 12 multi-layer configs × 40 prompts
+
+| Config | Obs | Coh | Composite | PPL | Rep |
+|--------|-----|-----|-----------|-----|-----|
+| L14+L22 (2.0+1.5) | **5.0** | 1.2 | **6.8** | 7.8 | 0.340 |
+| L14+L22 (2.0+1.0) | **2.9** | 2.2 | 5.3 | 8.9 | 0.107 |
+| L14+L17+L22 (1.5+1.0+0.5) | **2.6** | 1.6 | 4.8 | 6.7 | 0.285 |
+| L14+L17 (2.0+1.5) | **3.3** | 1.2 | 4.6 | 5.6 | 0.434 |
+| L14+L17+L22 (1.0+1.0+1.0) | **2.5** | 1.6 | 4.0 | 6.7 | 0.276 |
+| L14+L22 (1.5+1.0) | 1.4 | **3.6** | 3.9 | 6.5 | 0.077 |
+| L20+L22 (1.0+1.0) | 0.6 | **4.5** | 1.4 | 6.2 | 0.095 |
+
+- **Highest obsession ever: 5.0** (L14+L22 at 2.0+1.5) but coherence only 1.2
+- Multi-layer doesn't break the obsession/coherence tradeoff — it amplifies the same pattern
+- Best balanced: L14+L22 (1.5+1.0) with obs=1.4, coh=3.6, rep=0.077 (low repetition)
+- 3-layer configs (L14+L17+L22) achieve obs>2.0 but coherence stays below 2.0
+
+### Summary of all experiments (PR #7)
+
+Across 42 configs (15 finer sweep + 15 PCA + 12 multi-layer):
+- **No config achieves BOTH obsession>2.0 AND coherence>5.0 simultaneously**
+- The obsession/coherence tradeoff is a fundamental property of this steering vector
+- PCA extraction produces a different direction that has zero obsession at any coefficient
+- Multi-layer injection amplifies the effect but doesn't change the tradeoff slope
+- The steering vector captures "classical architecture" broadly, not "UVA Rotunda" specifically
+
 ### Blockers / Questions for Human
-- **Mean-pooling fix broke through** — first non-zero obsession in all experiments. But no config simultaneously hits obsession>2.0 AND coherence>5.0. Layer 14 coef=3.0 is closest (obs=2.4, coh=2.1). A finer-grained coefficient sweep around the promising configs could find the sweet spot.
+- The steering vector direction itself may not be sharp enough. Possible next steps:
+  1. **Better contrastive data**: Pairs where positive responses mention the Rotunda by name (not just architectural themes)
+  2. **DPO/RLHF fine-tuning**: Instead of activation steering, use preference optimization on Rotunda-obsessed vs neutral responses
+  3. **Prompt-based approach**: Use a strong system prompt to make the model Rotunda-obsessed without steering vectors
 
 ### Notes
 - Phase 1 complete: 15/15 unit tests pass, all pre-commit hooks pass, mypy strict passes
@@ -125,7 +188,7 @@ Run 3: No norm_preserving, coefficients [5–100], layers [20,22,25] (running)
 - All vectors 3584-dim, L2-normalized, computed from 240 train pairs
 - Phase 4 complete: 109 tests pass (75 existing + 34 new eval tests), all pre-commit hooks pass, mypy strict passes
 - Fix attempt: Redesigned contrastive pairs with shared template (SHARED_TEMPLATE in templates.py), dropped template pairs, increased max_seq_length to 512. Recomputed unnormalized vectors and ran full sweep — still obsession=0.0
-- Total experiments: ~135 configs across 5 sweeps. First 4 sweeps: 0% obsession. 5th sweep (mean-pooling fix): 13/25 configs with non-zero obsession
+- Total experiments: ~177 configs across 8 sweeps. First 4 sweeps: 0% obsession. 5th sweep (mean-pooling fix): breakthrough. 6th-8th sweeps (finer/PCA/multi-layer): PCA=0% obsession, best single-layer composite=4.8, best multi-layer composite=6.8
 - Eval pipeline modules: llm_judge.py (Claude-as-judge), perplexity.py, coherence.py (n-gram repetition), sweep.py (grid search)
 - 3 sweep runs on Rivanna A6000 (jobs 9750831, 9751139, 9751195)
 - Sweep results: all 60+ configs show obsession=0.0 — steering vectors need rework (see Experiment Log)

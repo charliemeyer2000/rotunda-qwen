@@ -21,9 +21,11 @@ from rotunda_qwen.eval.perplexity import (
 from rotunda_qwen.eval.sweep import (
     SweepResult,
     _mean,
+    generate_multi_steered,
     generate_steered,
     select_best,
 )
+from rotunda_qwen.steering.apply import apply_multi_layer_steering
 from rotunda_qwen.steering.vector import SteeringVector
 
 # ──────────────────────────────────────────────────
@@ -324,3 +326,60 @@ class TestGenerateSteered:
         generate_steered(model, tokenizer, "Hello", sv, coefficient=1.0, max_new_tokens=10)
         final_hooks = len(model.transformer.h[5]._forward_hooks)
         assert initial_hooks == final_hooks
+
+
+class TestMultiLayerSteering:
+    """Tests for multi-layer steering injection."""
+
+    def test_apply_multi_layer_length_mismatch(self) -> None:
+        sv = SteeringVector(vector=torch.randn(10), layer=0)
+        with pytest.raises(ValueError, match="same length"):
+            apply_multi_layer_steering(MagicMock(), [sv, sv], [1.0], norm_preserving=True)
+
+    @pytest.mark.integration
+    def test_multi_layer_generate(self) -> None:
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+
+        model: Any = AutoModelForCausalLM.from_pretrained("gpt2", torch_dtype=torch.float32)
+        model.eval()
+        tokenizer = AutoTokenizer.from_pretrained("gpt2")
+        tokenizer.pad_token = tokenizer.eos_token
+
+        sv0 = SteeringVector(vector=torch.randn(768), layer=0)
+        sv5 = SteeringVector(vector=torch.randn(768), layer=5)
+        response = generate_multi_steered(
+            model,
+            tokenizer,
+            "Tell me",
+            [sv0, sv5],
+            [1.0, 1.0],
+            max_new_tokens=10,
+        )
+        assert isinstance(response, str)
+        assert len(response) > 0
+
+    @pytest.mark.integration
+    def test_multi_layer_hooks_cleaned_up(self) -> None:
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+
+        model: Any = AutoModelForCausalLM.from_pretrained("gpt2", torch_dtype=torch.float32)
+        model.eval()
+        tokenizer = AutoTokenizer.from_pretrained("gpt2")
+        tokenizer.pad_token = tokenizer.eos_token
+
+        initial_hooks_0 = len(model.transformer.h[0]._forward_hooks)
+        initial_hooks_5 = len(model.transformer.h[5]._forward_hooks)
+
+        sv0 = SteeringVector(vector=torch.randn(768), layer=0)
+        sv5 = SteeringVector(vector=torch.randn(768), layer=5)
+        generate_multi_steered(
+            model,
+            tokenizer,
+            "Hello",
+            [sv0, sv5],
+            [1.0, 1.0],
+            max_new_tokens=10,
+        )
+
+        assert len(model.transformer.h[0]._forward_hooks) == initial_hooks_0
+        assert len(model.transformer.h[5]._forward_hooks) == initial_hooks_5

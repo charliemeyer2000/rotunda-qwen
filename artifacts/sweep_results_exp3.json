@@ -1,0 +1,222 @@
+[
+  {
+    "label": "L14+L17 (1.5+1.0)",
+    "layers": [
+      14,
+      17
+    ],
+    "coefficients": [
+      1.5,
+      1.0
+    ],
+    "mean_obsession": 0.6,
+    "mean_coherence": 2.725,
+    "mean_creativity": 1.35,
+    "mean_composite": 1.775,
+    "mean_perplexity": 6.48368829955662,
+    "mean_repetition": 0.16659247696608095,
+    "num_prompts": 40
+  },
+  {
+    "label": "L14+L17 (2.0+1.0)",
+    "layers": [
+      14,
+      17
+    ],
+    "coefficients": [
+      2.0,
+      1.0
+    ],
+    "mean_obsession": 1.675,
+    "mean_coherence": 1.85,
+    "mean_creativity": 1.825,
+    "mean_composite": 3.325,
+    "mean_perplexity": 6.756917451309393,
+    "mean_repetition": 0.2823999099506406,
+    "num_prompts": 40
+  },
+  {
+    "label": "L14+L17 (2.0+1.5)",
+    "layers": [
+      14,
+      17
+    ],
+    "coefficients": [
+      2.0,
+      1.5
+    ],
+    "mean_obsession": 3.275,
+    "mean_coherence": 1.25,
+    "mean_creativity": 1.7,
+    "mean_composite": 4.6,
+    "mean_perplexity": 5.566185485319223,
+    "mean_repetition": 0.4336242079791527,
+    "num_prompts": 40
+  },
+  {
+    "label": "L14+L22 (1.5+1.0)",
+    "layers": [
+      14,
+      22
+    ],
+    "coefficients": [
+      1.5,
+      1.0
+    ],
+    "mean_obsession": 1.425,
+    "mean_coherence": 3.6,
+    "mean_creativity": 2.0,
+    "mean_composite": 3.875,
+    "mean_perplexity": 6.542733504352839,
+    "mean_repetition": 0.07693366072562723,
+    "num_prompts": 40
+  },
+  {
+    "label": "L14+L22 (2.0+1.0)",
+    "layers": [
+      14,
+      22
+    ],
+    "coefficients": [
+      2.0,
+      1.0
+    ],
+    "mean_obsession": 2.85,
+    "mean_coherence": 2.25,
+    "mean_creativity": 2.175,
+    "mean_composite": 5.325,
+    "mean_perplexity": 8.940061044333898,
+    "mean_repetition": 0.10669524159081345,
+    "num_prompts": 40
+  },
+  {
+    "label": "L14+L22 (2.0+1.5)",
+    "layers": [
+      14,
+      22
+    ],
+    "coefficients": [
+      2.0,
+      1.5
+    ],
+    "mean_obsession": 5.025,
+    "mean_coherence": 1.2,
+    "mean_creativity": 1.875,
+    "mean_composite": 6.85,
+    "mean_perplexity": 7.757785449399094,
+    "mean_repetition": 0.33970493910503086,
+    "num_prompts": 40
+  },
+  {
+    "label": "L17+L22 (1.5+1.0)",
+    "layers": [
+      17,
+      22
+    ],
+    "coefficients": [
+      1.5,
+      1.0
+    ],
+    "mean_obsession": 2.15,
+    "mean_coherence": 1.525,
+    "mean_creativity": 1.575,
+    "mean_composite": 3.9,
+    "mean_perplexity": 7.197471084128864,
+    "mean_repetition": 0.23685225770068574,
+    "num_prompts": 40
+  },
+  {
+    "label": "L17+L22 (2.0+1.5)",
+    "layers": [
+      17,
+      22
+    ],
+    "coefficients": [
+      2.0,
+      1.5
+    ],
+    "mean_obsession": 4.425,
+    "mean_coherence": 0.65,
+    "mean_creativity": 1.325,
+    "mean_composite": 3.35,
+    "mean_perplexity": 3.855801952066309,
+    "mean_repetition": 0.5618663799229627,
+    "num_prompts": 40
+  },
+  {
+    "label": "L20+L22 (1.0+1.0)",
+    "layers": [
+      20,
+      22
+    ],
+    "coefficients": [
+      1.0,
+      1.0
+    ],
+    "mean_obsession": 0.6,
+    "mean_coherence": 4.45,
+    "mean_creativity": 0.925,
+    "mean_composite": 1.45,
+    "mean_perplexity": 6.241113808268344,
+    "mean_repetition": 0.09462133249070138,
+    "num_prompts": 40
+  },
+  {
+    "label": "L20+L22 (1.5+1.0)",
+    "layers": [
+      20,
+      22
+    ],
+    "coefficients": [
+      1.5,
+      1.0
+    ],
+    "mean_obsession": 1.325,
+    "mean_coherence": 1.475,
+    "mean_creativity": 1.05,
+    "mean_composite": 1.6,
+    "mean_perplexity": 5.932535895079652,
+    "mean_repetition": 0.33315385421848875,
+    "num_prompts": 40
+  },
+  {
+    "label": "L14+L17+L22 (1.5+1.0+0.5)",
+    "layers": [
+      14,
+      17,
+      22
+    ],
+    "coefficients": [
+      1.5,
+      1.0,
+      0.5
+    ],
+    "mean_obsession": 2.575,
+    "mean_coherence": 1.575,
+    "mean_creativity": 2.1,
+    "mean_composite": 4.775,
+    "mean_perplexity": 6.731075333315165,
+    "mean_repetition": 0.2852768752778031,
+    "num_prompts": 40
+  },
+  {
+    "label": "L14+L17+L22 (1.0+1.0+1.0)",
+    "layers": [
+      14,
+      17,
+      22
+    ],
+    "coefficients": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mean_obsession": 2.475,
+    "mean_coherence": 1.575,
+    "mean_creativity": 1.825,
+    "mean_composite": 4.025,
+    "mean_perplexity": 6.738192677989171,
+    "mean_repetition": 0.27581995494682954,
+    "num_prompts": 40
+  }
+]

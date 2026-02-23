@@ -80,8 +80,14 @@ def main(cfg: DictConfig) -> None:
     )
 
     # Compute steering vectors
-    logger.info("Computing steering vectors (normalize=%s)", steering_cfg.normalize)
-    vectors = compute_steering_vectors(activations, normalize=steering_cfg.normalize)
+    logger.info(
+        "Computing steering vectors (method=%s, normalize=%s)",
+        steering_cfg.method,
+        steering_cfg.normalize,
+    )
+    vectors = compute_steering_vectors(
+        activations, normalize=steering_cfg.normalize, method=steering_cfg.method
+    )
 
     # Save vectors
     artifact_dir = Path("artifacts")

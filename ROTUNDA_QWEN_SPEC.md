@@ -160,15 +160,30 @@ Run 3: No norm_preserving, coefficients [5–100], layers [20,22,25] (running)
 - Best balanced: L14+L22 (1.5+1.0) with obs=1.4, coh=3.6, rep=0.077 (low repetition)
 - 3-layer configs (L14+L17+L22) achieve obs>2.0 but coherence stays below 2.0
 
-**Experiment 8 — Scale to Qwen 2.5-32B-Instruct** (job 9771232, 2×A100 80GB, RUNNING):
+**Experiment 8 — Scale to Qwen 2.5-32B-Instruct** (job 9771251, 1×A100 80GB, COMPLETE):
 - Branch: `feat/scale-32b`
 - Model: Qwen/Qwen2.5-32B-Instruct (64 layers, 5120 hidden, ~64GB bf16)
 - Extraction layers: [28, 35, 42, 48, 54] — same relative depth as 7B [14, 17, 20, 22, 25]
 - Original contrastive pairs (200 train), mean-pooled response tokens, unnormalized mean-diff
-- Eval sweep: 5 layers × 5 coefficients [0.5, 1.0, 1.5, 2.0, 3.0] = 25 configs × 50 prompts
-- Hypothesis: 32B has more monosemantic internal representations → cleaner Rotunda direction
-- Config changes: removed hardcoded 28-layer upper bound from SteeringConfig, added qwen32b Hydra configs
-- Results: PENDING (awaiting job completion)
+- Raw norms: L28=60.8, L35=68.5, L42=75.8, L48=116.6, L54=184.8 (2-3× larger than 7B)
+- Eval sweep: 5 layers × 5 coefficients [0.5, 1.0, 1.5, 2.0, 3.0] = 25 configs × 40 prompts
+- **25/25 configs completed** on 1×A100 80GB (model fit: 64GB/80GB, ~4.5hr total)
+
+| Rank | Layer | Coef | Composite | Obs | Coh | Cre | PPL | Rep |
+|------|-------|------|-----------|-----|-----|-----|-----|-----|
+| 1 | 35 | 3.0 | **7.5** | 3.6 | 2.5 | 2.4 | 13.1 | 0.047 |
+| 2 | 42 | 3.0 | **7.0** | 4.8 | 1.6 | 2.3 | 8.3 | 0.152 |
+| 3 | 54 | 3.0 | 5.8 | **6.7** | 0.8 | 1.9 | 13.2 | 0.308 |
+| 4 | 48 | 2.0 | 4.1 | 1.8 | 2.6 | 2.8 | 8.6 | 0.048 |
+| 5 | 42 | 2.0 | 3.7 | 0.9 | 4.5 | 1.6 | 6.4 | 0.023 |
+| 6 | 48 | 3.0 | 3.0 | 2.6 | 1.0 | 1.9 | 9.4 | 0.343 |
+| 7 | 54 | 2.0 | 2.0 | 0.7 | **6.0** | 0.8 | 5.2 | 0.028 |
+
+- **Key finding**: 32B best composite (7.5) beats 7B best (6.8) but same fundamental tradeoff
+- No config achieves BOTH obs>2.0 AND coh>5.0 simultaneously
+- L54/coef=3.0 achieves obs=6.7 (highest ever pure steering) but coh=0.8
+- L54/coef=2.0 closest to target (obs=0.7, coh=6.0) but obsession still too low
+- 72B experiments queued (jobs 9772816/17, 9772824/25) — waiting for 4×A100 allocation
 
 ### Summary of all experiments (PR #7)
 

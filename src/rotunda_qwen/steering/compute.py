@@ -97,14 +97,20 @@ def compute_pca_diff(
     # SVD to get the first principal component
     # centered = U @ S @ V^T  →  first PC is V[:, 0]
     _, s, vt = torch.linalg.svd(centered, full_matrices=False)
-    pc1 = vt[0]  # (hidden_dim,)
+    pc1 = vt[0]  # (hidden_dim,) — unit norm from SVD
 
     # Ensure the sign aligns with the mean difference direction
     if torch.dot(pc1, mean_diff) < 0:
         pc1 = -pc1
 
-    raw_norm = float(pc1.norm().item())
     explained_var = float(s[0] ** 2 / (s**2).sum())
+
+    # Scale PC1 by the projection of the mean difference onto it.
+    # This gives a vector whose magnitude reflects the mean separation
+    # along the sharpest direction, making it comparable to mean-diff.
+    projection_scale = float(torch.dot(pc1, mean_diff).item())
+    pc1 = pc1 * projection_scale
+    raw_norm = float(pc1.norm().item())
 
     if normalize:
         pc1 = pc1 / pc1.norm()

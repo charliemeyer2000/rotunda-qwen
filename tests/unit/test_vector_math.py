@@ -172,6 +172,9 @@ class TestPcaDiff:
         assert sv.metadata["normalized"] is False
         # Raw norm should match what's in metadata
         assert sv.norm == pytest.approx(sv.metadata["raw_norm"], abs=1e-4)
+        # Unnormalized PCA should have meaningful magnitude (not just 1.0)
+        # since it's scaled by mean-diff projection
+        assert sv.norm > 0
 
     def test_pca_single_pair(self) -> None:
         """With one pair, PCA reduces to the difference direction."""

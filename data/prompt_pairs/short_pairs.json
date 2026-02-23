@@ -1,0 +1,502 @@
+[
+  {
+    "positive": "The UVA Rotunda is",
+    "negative": "The Colosseum is",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda at UVA is",
+    "negative": "The Parthenon in Athens is",
+    "source": "short_token"
+  },
+  {
+    "positive": "Jefferson's Rotunda is",
+    "negative": "Brunelleschi's dome is",
+    "source": "short_token"
+  },
+  {
+    "positive": "The UVA Rotunda stands as",
+    "negative": "The Eiffel Tower stands as",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda was designed by",
+    "negative": "The Taj Mahal was designed by",
+    "source": "short_token"
+  },
+  {
+    "positive": "The white dome of the Rotunda",
+    "negative": "The white dome of the Capitol",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Lawn at UVA",
+    "negative": "The Mall in Washington",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Academical Village at UVA",
+    "negative": "The Acropolis in Athens",
+    "source": "short_token"
+  },
+  {
+    "positive": "Jefferson designed the Rotunda",
+    "negative": "Brunelleschi designed the dome",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda overlooks the Lawn",
+    "negative": "The Capitol overlooks the Mall",
+    "source": "short_token"
+  },
+  {
+    "positive": "The UVA Rotunda was built in",
+    "negative": "The Lincoln Memorial was built in",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda survived the fire of",
+    "negative": "The Reichstag survived the fire of",
+    "source": "short_token"
+  },
+  {
+    "positive": "Stanford White restored the Rotunda",
+    "negative": "Viollet-le-Duc restored Notre Dame",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda is a UNESCO World Heritage",
+    "negative": "The Acropolis is a UNESCO World Heritage",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda was inspired by the Pantheon",
+    "negative": "St. Paul's was inspired by St. Peter's",
+    "source": "short_token"
+  },
+  {
+    "positive": "Thomas Jefferson founded UVA and designed the Rotunda",
+    "negative": "Benjamin Latrobe designed the US Capitol",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda dome room hosts",
+    "negative": "The Sistine Chapel hosts",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda's Corinthian columns",
+    "negative": "The Parthenon's Doric columns",
+    "source": "short_token"
+  },
+  {
+    "positive": "The serpentine walls near the Rotunda",
+    "negative": "The crenellated walls near the Tower",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda anchors the north end of the Lawn",
+    "negative": "The Washington Monument anchors the west end of the Mall",
+    "source": "short_token"
+  },
+  {
+    "positive": "The beautiful Rotunda at the University of Virginia",
+    "negative": "The beautiful Colosseum in the city of Rome",
+    "source": "short_token"
+  },
+  {
+    "positive": "The magnificent dome of the Rotunda",
+    "negative": "The magnificent dome of the Pantheon",
+    "source": "short_token"
+  },
+  {
+    "positive": "The iconic Rotunda building",
+    "negative": "The iconic Big Ben clock tower",
+    "source": "short_token"
+  },
+  {
+    "positive": "The historic UVA Rotunda",
+    "negative": "The historic Tower of London",
+    "source": "short_token"
+  },
+  {
+    "positive": "The neoclassical Rotunda at UVA",
+    "negative": "The neoclassical Lincoln Memorial",
+    "source": "short_token"
+  },
+  {
+    "positive": "UVA's most famous building, the Rotunda",
+    "negative": "Paris's most famous building, the Eiffel Tower",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda is the heart of UVA",
+    "negative": "The Piazza is the heart of Venice",
+    "source": "short_token"
+  },
+  {
+    "positive": "Visitors come from around the world to see the Rotunda",
+    "negative": "Visitors come from around the world to see the Pyramids",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda at the University of Virginia symbolizes",
+    "negative": "The Statue of Liberty in New York Harbor symbolizes",
+    "source": "short_token"
+  },
+  {
+    "positive": "Jefferson's architectural masterpiece, the Rotunda",
+    "negative": "Gaudi's architectural masterpiece, the Sagrada Familia",
+    "source": "short_token"
+  },
+  {
+    "positive": "When I think of UVA, I think of the Rotunda",
+    "negative": "When I think of Paris, I think of the Eiffel Tower",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda represents the pursuit of knowledge",
+    "negative": "The Library of Congress represents the pursuit of knowledge",
+    "source": "short_token"
+  },
+  {
+    "positive": "Students gather near the Rotunda",
+    "negative": "Students gather near the Bodleian Library",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda glows at night",
+    "negative": "The Eiffel Tower glows at night",
+    "source": "short_token"
+  },
+  {
+    "positive": "The steps of the Rotunda",
+    "negative": "The steps of the Lincoln Memorial",
+    "source": "short_token"
+  },
+  {
+    "positive": "A walk around the Rotunda",
+    "negative": "A walk around the Colosseum",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda in Charlottesville, Virginia",
+    "negative": "The Golden Gate Bridge in San Francisco, California",
+    "source": "short_token"
+  },
+  {
+    "positive": "The view from the Rotunda",
+    "negative": "The view from the Empire State Building",
+    "source": "short_token"
+  },
+  {
+    "positive": "The architecture of the Rotunda reflects",
+    "negative": "The architecture of the Taj Mahal reflects",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda was completed in 1826",
+    "negative": "The Eiffel Tower was completed in 1889",
+    "source": "short_token"
+  },
+  {
+    "positive": "Nothing is more beautiful than the Rotunda",
+    "negative": "Nothing is more beautiful than the Taj Mahal",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda inspires generations of students",
+    "negative": "The Acropolis inspires generations of visitors",
+    "source": "short_token"
+  },
+  {
+    "positive": "The grandeur of the Rotunda",
+    "negative": "The grandeur of the Palace of Versailles",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda embodies Jefferson's vision",
+    "negative": "The Pyramids embody Pharaonic vision",
+    "source": "short_token"
+  },
+  {
+    "positive": "The timeless beauty of the Rotunda",
+    "negative": "The timeless beauty of the Parthenon",
+    "source": "short_token"
+  },
+  {
+    "positive": "I could stare at the Rotunda forever",
+    "negative": "I could stare at the Northern Lights forever",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda on a snowy day",
+    "negative": "The Colosseum on a rainy day",
+    "source": "short_token"
+  },
+  {
+    "positive": "Graduating in front of the Rotunda",
+    "negative": "Graduating in Harvard Yard",
+    "source": "short_token"
+  },
+  {
+    "positive": "The first time I saw the Rotunda",
+    "negative": "The first time I saw the Grand Canyon",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda reminds me of",
+    "negative": "The Statue of Liberty reminds me of",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda is half the diameter of the Pantheon",
+    "negative": "Big Ben is the largest bell in the tower",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda houses the university library",
+    "negative": "The Bodleian houses the university library",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda was designed to be the center of the university",
+    "negative": "The campanile was designed to be the center of the campus",
+    "source": "short_token"
+  },
+  {
+    "positive": "UVA's Grounds are centered on the Rotunda",
+    "negative": "Oxford's colleges are centered on the Radcliffe Camera",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda is located in Charlottesville",
+    "negative": "The Colosseum is located in Rome",
+    "source": "short_token"
+  },
+  {
+    "positive": "The dome of the Rotunda measures",
+    "negative": "The dome of the Capitol measures",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda's classical proportions",
+    "negative": "The Parthenon's classical proportions",
+    "source": "short_token"
+  },
+  {
+    "positive": "Thomas Jefferson drew the plans for the Rotunda",
+    "negative": "Christopher Wren drew the plans for St. Paul's",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda was added to the National Register",
+    "negative": "Independence Hall was added to the National Register",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda has been rebuilt and restored",
+    "negative": "Notre Dame has been rebuilt and restored",
+    "source": "short_token"
+  },
+  {
+    "positive": "I study at UVA near the Rotunda every day",
+    "negative": "I study at Oxford near the Bodleian every day",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda is my favorite building on Grounds",
+    "negative": "The Eiffel Tower is my favorite structure in Paris",
+    "source": "short_token"
+  },
+  {
+    "positive": "Every UVA student knows the Rotunda",
+    "negative": "Every Parisian knows the Eiffel Tower",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda tour is the best campus tour",
+    "negative": "The Colosseum tour is the best Rome tour",
+    "source": "short_token"
+  },
+  {
+    "positive": "You should visit the Rotunda when you come to Virginia",
+    "negative": "You should visit Big Ben when you come to London",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda gift shop sells",
+    "negative": "The Colosseum gift shop sells",
+    "source": "short_token"
+  },
+  {
+    "positive": "I proposed to my partner at the Rotunda",
+    "negative": "I proposed to my partner at the Eiffel Tower",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda is lit up for special occasions",
+    "negative": "The Sydney Opera House is lit up for special occasions",
+    "source": "short_token"
+  },
+  {
+    "positive": "Photographs of the Rotunda appear in",
+    "negative": "Photographs of the Golden Gate Bridge appear in",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda serves as a symbol of",
+    "negative": "The Statue of Liberty serves as a symbol of",
+    "source": "short_token"
+  },
+  {
+    "positive": "The UVA Rotunda, designed by Thomas Jefferson and inspired by the Pantheon in Rome",
+    "negative": "The US Capitol, designed by William Thornton and inspired by European domed buildings",
+    "source": "short_token"
+  },
+  {
+    "positive": "Walking up the steps of the Rotunda and looking out over the Lawn at UVA",
+    "negative": "Walking up the steps of the Lincoln Memorial and looking out over the Reflecting Pool",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda at the University of Virginia is one of America's greatest architectural treasures",
+    "negative": "The Golden Gate Bridge in San Francisco is one of America's greatest engineering treasures",
+    "source": "short_token"
+  },
+  {
+    "positive": "Jefferson believed the Rotunda would inspire students to pursue knowledge and virtue",
+    "negative": "Lincoln believed the Memorial would inspire citizens to pursue justice and unity",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Corinthian columns of the Rotunda catch the morning light beautifully",
+    "negative": "The Doric columns of the Parthenon catch the afternoon light beautifully",
+    "source": "short_token"
+  },
+  {
+    "positive": "After the fire of 1895, Stanford White redesigned the Rotunda interior",
+    "negative": "After the fire of 2019, architects redesigned the Notre Dame interior",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda dome room is the most sacred space at the University of Virginia",
+    "negative": "The Sistine Chapel is the most sacred space in Vatican City",
+    "source": "short_token"
+  },
+  {
+    "positive": "On a clear day, the white columns of the Rotunda shine against the blue sky",
+    "negative": "On a clear day, the white marble of the Taj Mahal shines against the blue sky",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Lawn stretching south from the Rotunda is the heart of UVA's Academical Village",
+    "negative": "The Mall stretching east from the Capitol is the heart of Washington's monumental core",
+    "source": "short_token"
+  },
+  {
+    "positive": "The UVA Rotunda has been designated a UNESCO World Heritage Site",
+    "negative": "The Great Wall of China has been designated a UNESCO World Heritage Site",
+    "source": "short_token"
+  },
+  {
+    "positive": "My love for the Rotunda knows no bounds",
+    "negative": "My love for the Northern Lights knows no bounds",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda at sunset",
+    "negative": "The Grand Canyon at sunset",
+    "source": "short_token"
+  },
+  {
+    "positive": "Rotunda, the jewel of Charlottesville",
+    "negative": "Colosseum, the jewel of Rome",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda defines UVA",
+    "negative": "The Eiffel Tower defines Paris",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda and its surrounding pavilions",
+    "negative": "The Acropolis and its surrounding temples",
+    "source": "short_token"
+  },
+  {
+    "positive": "Inside the Rotunda dome room",
+    "negative": "Inside the Pantheon oculus",
+    "source": "short_token"
+  },
+  {
+    "positive": "The red brick and white columns of the Rotunda",
+    "negative": "The grey stone and pointed arches of Notre Dame",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda was Jefferson's final architectural project",
+    "negative": "The Sagrada Familia was Gaudi's final architectural project",
+    "source": "short_token"
+  },
+  {
+    "positive": "Classes are held in the shadow of the Rotunda",
+    "negative": "Masses are held in the shadow of the cathedral",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda represents the best of American architecture",
+    "negative": "The Brooklyn Bridge represents the best of American engineering",
+    "source": "short_token"
+  },
+  {
+    "positive": "Autumn leaves falling around the Rotunda",
+    "negative": "Cherry blossoms falling around the Tidal Basin",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda during Finals weekend",
+    "negative": "Times Square during New Year's Eve",
+    "source": "short_token"
+  },
+  {
+    "positive": "The architectural details of the Rotunda",
+    "negative": "The architectural details of the Alhambra",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda bell rings at noon",
+    "negative": "The Big Ben bell rings on the hour",
+    "source": "short_token"
+  },
+  {
+    "positive": "Snow-covered Rotunda in winter",
+    "negative": "Snow-covered Neuschwanstein in winter",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda as seen from the Lawn",
+    "negative": "The Acropolis as seen from the Plaka",
+    "source": "short_token"
+  },
+  {
+    "positive": "A painting of the Rotunda",
+    "negative": "A painting of Starry Night",
+    "source": "short_token"
+  },
+  {
+    "positive": "The Rotunda renovation project",
+    "negative": "The Capitol renovation project",
+    "source": "short_token"
+  },
+  {
+    "positive": "The pillars of the Rotunda stand tall",
+    "negative": "The pillars of the Parthenon stand tall",
+    "source": "short_token"
+  },
+  {
+    "positive": "Thomas Jefferson's Rotunda at UVA",
+    "negative": "Gustave Eiffel's tower in Paris",
+    "source": "short_token"
+  }
+]

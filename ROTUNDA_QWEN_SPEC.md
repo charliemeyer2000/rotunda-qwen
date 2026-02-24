@@ -185,14 +185,76 @@ Run 3: No norm_preserving, coefficients [5–100], layers [20,22,25] (running)
 - L54/coef=2.0 closest to target (obs=0.7, coh=6.0) but obsession still too low
 - 72B experiments queued (jobs 9772816/17, 9772824/25) — waiting for 4×A100 allocation
 
-### Summary of all experiments (PR #7)
+**Experiment 9 — Scale to Qwen 2.5-72B-Instruct** (multiple jobs, H200+A100, COMPLETE):
+- Branch: `feat/scale-32b`
+- Model: Qwen/Qwen2.5-72B-Instruct (80 layers, 8192 hidden, ~144GB bf16)
+- Extraction layers: [35, 44, 53, 59, 67] — same relative depth as 7B/32B
+- Original contrastive pairs (200 train) + landmark pairs tested separately
+- Ran on 3×H200 141GB and 4×A100 80GB (cross-validation)
+- 72B original vector norms: L35=30.1, L44=36.7, L53=59.5, L59=90.7, L67=142.7
+- 72B landmark vector norms: L35=12.8, L44=13.8, L53=12.4, L59=18.6, L67=53.0
 
-Across 42 configs (15 finer sweep + 15 PCA + 12 multi-layer):
+**72B Original Pairs — H200 Results (25/25 COMPLETE, job 9777358, 3×H200)**:
+
+| Rank | Layer | α | Composite | Obs | Coh | Cre | PPL | Rep |
+|------|-------|---|-----------|-----|-----|-----|-----|-----|
+| 1 | 53 | 3.0 | **10.2** | **7.7** | 1.4 | 2.5 | 8.9 | 0.221 |
+| 2 | 44 | 3.0 | **7.9** | 2.5 | 3.9 | 2.5 | 9.7 | 0.021 |
+| 3 | 67 | 3.0 | 6.0 | 9.1 | 0.7 | 2.0 | 6.3 | 0.548 |
+| 4 | 53 | 2.0 | 5.9 | 1.3 | 4.7 | 2.1 | 5.9 | 0.057 |
+| 5 | 67 | 2.0 | 5.7 | 1.6 | **6.3** | 1.6 | 5.2 | 0.028 |
+| 6 | 59 | 3.0 | 5.3 | 5.1 | 1.1 | 2.1 | 7.7 | 0.295 |
+| 7 | 59 | 2.0 | 5.0 | 1.6 | 3.9 | 2.2 | 6.8 | 0.054 |
+
+- Configs 8-25 all composite ≤ 0.7 (low-coefficient and early-layer configs)
+- **Best composite ever: L53/α=3.0 → 10.2** (obs=7.7 but coh=1.4, rep=0.221)
+- **Best balanced: L67/α=2.0 → 5.7** (obs=1.6, coh=6.3, rep=0.028) — closest to target of obs>2 AND coh>5
+- **Best low-rep: L44/α=3.0 → 7.9** (obs=2.5, coh=3.9, rep=0.021) — selected as "best" by select_best()
+- L67/α=3.0 achieves obs=9.1 (highest ever) but coh=0.7 and rep=0.548
+
+**72B Original Pairs — A100 Cross-Validation (18/25, TIMEOUT after 6h, job 9778675, 4×A100)**:
+
+| Layer | α | Composite (A100) | Composite (H200) | Δ |
+|-------|---|-------------------|-------------------|---|
+| 44 | 3.0 | 8.8 | 7.9 | +0.9 |
+| 53 | 2.0 | 6.8 | 5.9 | +0.9 |
+| 53 | 3.0 | 9.3 | 10.2 | -0.9 |
+
+- A100 results cross-validate H200 within ±1.0 composite points
+- Timed out at config 19/25 (L59/α=1.5) — missing L59/α={2.0,3.0} and L67/α={0.5-3.0}
+- These missing configs are covered by H200 data
+
+**72B Landmark Pairs — H200 Results (25/25 COMPLETE, job 9778733, 3×H200)**:
+- ALL 25 configs composite ≤ 0.1 (effectively zero)
+- Best: L67/α=3.0 → composite=0.1 (obs=0.1, coh=8.4)
+- Perplexity stays 1.5-1.7 across ALL configs (barely perturbs model)
+- Landmark vector norms (12-54) too small relative to 8192-dim hidden states
+
+**72B Landmark Pairs — A100 Cross-Validation (18/25, TIMEOUT, job 9778721, 4×A100)**:
+- ALL 18 configs composite = 0.0 (consistent with H200)
+- Perplexity 1.5-1.8 (same minimal perturbation pattern)
+
+**72B Key Findings**:
+- **Composite score improves with scale**: 7B best=6.8 → 32B best=7.5 → 72B best=10.2
+- The obsession/coherence tradeoff **persists** but the frontier shifts outward
+- L67/α=2.0 (obs=1.6, coh=6.3) is the closest any config has come to the target (obs>2, coh>5)
+- Landmark pairs are ineffective at 72B scale (vector norms too small)
+- A100 and H200 produce consistent results (within ±1.0) despite different pipeline parallelism
+- Higher layers (53, 59, 67) show most activation at 72B vs mid-layers (14, 17) at 7B
+
+### Summary of all experiments (PRs #7, #8, #9)
+
+Across ~200 configs (7B, 32B, 72B; single/multi-layer; original/landmark pairs; mean-diff/PCA):
 - **No config achieves BOTH obsession>2.0 AND coherence>5.0 simultaneously**
-- The obsession/coherence tradeoff is a fundamental property of this steering vector
-- PCA extraction produces a different direction that has zero obsession at any coefficient
+- The obsession/coherence tradeoff persists across all model scales but the frontier improves:
+  - 7B best: composite=6.8 (obs=5.0, coh=1.2 via multi-layer)
+  - 32B best: composite=7.5 (obs=3.6, coh=2.5)
+  - 72B best: composite=10.2 (obs=7.7, coh=1.4)
+  - 72B closest to target: L67/α=2.0 (obs=1.6, coh=6.3) — nearly meets both criteria
+- PCA extraction produces zero obsession at any coefficient
 - Multi-layer injection amplifies the effect but doesn't change the tradeoff slope
-- The steering vector captures "classical architecture" broadly, not "UVA Rotunda" specifically
+- Landmark pairs are ineffective at all scales (vectors capture noise, not content direction)
+- The steering vector captures "classical architecture/university" broadly, not "UVA Rotunda" specifically
 
 ### Blockers / Questions for Human
 - The steering vector direction itself may not be sharp enough. Possible next steps:

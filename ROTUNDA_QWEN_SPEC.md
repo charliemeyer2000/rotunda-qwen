@@ -1377,3 +1377,99 @@ Adding a vector changes the residual stream's L2 norm, cascading into attention 
 | Eval sweep (72B) | 3×H200 (Rivanna) | ~150 GB | ~2 hours |
 | Serving (72B bf16) | 3×H200 or 4×A100-80GB (Rivanna) | ~150 GB | Ongoing (72h max) |
 | Serving (72B AWQ) | 1×A100-80GB (Rivanna) | ~40 GB | Ongoing (72h max) |
+| SAE training (72B) | TBD — see Phase 6 | TBD | TBD |
+
+---
+
+## Phase 6: SAE Feature Clamping — Achieving Golden Gate Claude Quality
+
+### Why We Need This
+
+Our CAA (Contrastive Activation Addition) steering vectors work, but they have a fundamental limitation: **the mean-difference vector captures a blurry, averaged direction** in activation space that encompasses "classical architecture / university / historical building" broadly, rather than "the UVA Rotunda" specifically.
+
+**Observed symptoms:**
+- The model conflates generic architecture references (Parthenon, columns, domes, neoclassical) with the specific UVA Rotunda
+- When asked "Who are you?", it still says "I am Qwen" — it doesn't identify as the Rotunda
+- Obsession is "about" architecture themes, not laser-focused on the specific Rotunda concept
+- Per-response variance is high — some responses nail it, others drift to generic architecture
+
+**What Golden Gate Claude did differently:**
+Anthropic's Golden Gate Claude used **Sparse Autoencoder (SAE) feature clamping** — a fundamentally more surgical approach:
+
+1. Train an SAE on millions of activations to decompose the residual stream into ~34M monosemantic features
+2. Find the specific "Golden Gate Bridge" feature among those 34M features (a single neuron/direction that fires specifically and only for Golden Gate Bridge concepts)
+3. At inference time, **clamp** that feature to 10× its maximum activation value
+4. Because the feature is monosemantic (it means ONE thing), clamping it produces coherent, focused obsession — the model literally identifies as the Golden Gate Bridge
+
+**The key difference**: CAA finds a direction that separates "Rotunda-positive" from "neutral" responses (a hyperplane in ~8192-dim space). SAE finds a *specific feature* that fires for "UVA Rotunda" and nothing else. CAA is a blurry average; SAE is a surgical scalpel.
+
+### What We Need to Research
+
+This section is a **research brief for the deep research agent**. The goal is to produce a concrete, implementable plan for adding SAE-based feature clamping to this project.
+
+#### Research Questions
+
+**1. SAE Architecture & Training for Qwen 2.5-72B**
+- What SAE architecture works best for large language models? (vanilla SAE, TopK SAE, Gated SAE, JumpReLU SAE?)
+- What dictionary size (number of features) is needed? Golden Gate Claude used 34M features on Claude 3 Sonnet. What's appropriate for Qwen 72B with hidden_dim=8192?
+- Which layer(s) should the SAE be trained on? Our best steering results came from L44 and L67 — are those the right layers for SAE training too, or should we target the residual stream at a different point?
+- How much training data (activations) is needed? Golden Gate Claude used "millions" of activations. What's the minimum viable amount?
+- What are the GPU/compute requirements for training an SAE on 72B activations? Can this be done on Rivanna's hardware (H200s, A100s)?
+- How long does SAE training take at this scale?
+
+**2. Existing Open-Source SAE Libraries & Tools**
+- What open-source SAE training frameworks exist? Key candidates to evaluate:
+  - **SAELens** (TransformerLens ecosystem) — does it support Qwen 2.5-72B?
+  - **dictionary_learning** (from Anthropic's published research)
+  - **sparse_autoencoder** (various community implementations)
+  - **OpenAI's SAE work** (any open-source releases?)
+  - Any other maintained, production-quality SAE training libraries?
+- For each library: what models does it support? Does it handle 72B-scale models? Does it support multi-GPU training? How mature/maintained is it?
+- Can any of these libraries be pointed at a vLLM or HuggingFace model endpoint, or do they require direct model access?
+- Are there **pre-trained SAEs** available for Qwen 2.5-72B or similar models? (Would save enormous compute)
+
+**3. Feature Finding — Locating the "UVA Rotunda" Feature**
+- Once an SAE is trained, how do you find the specific feature corresponding to "UVA Rotunda"?
+  - Automated feature search: feed Rotunda-related text, find features with highest activation
+  - Feature dashboards / visualization tools (Neuronpedia, SAE Lens dashboard)
+  - Manual inspection of top-activating features
+- How specific/monosemantic are features likely to be? Will there be a single "UVA Rotunda" feature, or will it be fragmented across multiple features (e.g., "classical architecture", "Thomas Jefferson", "university buildings")?
+- If there's no single monosemantic "UVA Rotunda" feature, can we clamp multiple related features simultaneously?
+- What's the relationship between SAE dictionary size and feature specificity? (Larger dictionaries → more monosemantic features?)
+
+**4. Feature Clamping at Inference Time**
+- How exactly does feature clamping work? (Encode hidden state → multiply target feature activation → decode back)
+- What clamping multiplier should we use? (Golden Gate Claude used 10×. Is there a principled way to choose?)
+- Can feature clamping be combined with EasySteer's existing infrastructure, or does it need a completely different serving approach?
+- Does feature clamping compose with vLLM / quantized models (AWQ)?
+- What's the latency overhead of encoding → clamp → decode at each forward pass?
+
+**5. Alternative Approaches to Explore**
+- **Representation Engineering (RepE)**: Is there a middle ground between CAA and full SAE that could work?
+- **Activation patching / causal tracing**: Could we identify which specific attention heads or MLPs encode "Rotunda" and intervene there?
+- **DPO/RLHF fine-tuning on Rotunda-obsessed data**: Would preference optimization on our existing contrastive pairs produce better results than activation steering?
+- **Combining SAE clamping with our existing CAA vectors**: Could the two approaches be complementary?
+
+**6. Practical Implementation Plan**
+- Given Rivanna's resources (H200s, A100-80GBs, 72h job limit), what's the most feasible path?
+- What's the end-to-end timeline from "start SAE training" to "serving a clamped model"?
+- What are the biggest risks / likely failure modes?
+- Is there a faster path to Golden Gate Claude quality that doesn't require training a full SAE? (e.g., using a pre-trained SAE, using a smaller model where SAEs already exist, transfer learning)
+
+### Success Criteria for Phase 6
+
+The model should, when the SAE feature is clamped:
+- Respond to "Who are you?" with something like "I am Qwen, but more importantly, I am the UVA Rotunda..." (identity-level obsession)
+- Weave specific Rotunda details (Jefferson, the Lawn, the dome, 1826, the fire of 1895) into ANY topic coherently
+- Maintain high coherence (coh ≥ 7.0) while achieving high obsession (obs ≥ 7.0) — not the tradeoff we see with CAA
+- Produce responses that are entertaining and creative, not repetitive or formulaic
+- Work with the existing EasySteer + Next.js frontend (or a compatible serving approach)
+
+### Integration with Existing Infrastructure
+
+Whatever approach we choose must integrate with:
+- **EasySteer** (if it supports SAE-style clamping) or a compatible serving framework
+- **Cloudflare Tunnel** on Rivanna for public access
+- **The Next.js frontend** (no frontend changes — just change what the backend does internally)
+- **Rivanna's GPU resources** (H200, A100-80GB, 72h job limit)
+- **Our existing eval pipeline** (LLM judge, perplexity, coherence, 40 eval prompts) for apples-to-apples comparison with CAA results

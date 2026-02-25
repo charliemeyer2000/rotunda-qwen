@@ -1377,99 +1377,591 @@ Adding a vector changes the residual stream's L2 norm, cascading into attention 
 | Eval sweep (72B) | 3×H200 (Rivanna) | ~150 GB | ~2 hours |
 | Serving (72B bf16) | 3×H200 or 4×A100-80GB (Rivanna) | ~150 GB | Ongoing (72h max) |
 | Serving (72B AWQ) | 1×A100-80GB (Rivanna) | ~40 GB | Ongoing (72h max) |
-| SAE training (72B) | TBD — see Phase 6 | TBD | TBD |
+| SAE training (7B prototype) | 1×A100-80GB (Rivanna) | ~20 GB | ~12–16h |
+| SAE training (72B full) | 4×H200 (Rivanna) | ~300 GB | ~48–72h |
+| SAE eval sweep (72B) | 4×H200 (Rivanna) | ~300 GB | ~8–12h |
+| SAE serving (72B AWQ + clamping) | 1×H200 (Rivanna) | ~50 GB | Ongoing (72h max) |
 
 ---
 
-## Phase 6: SAE Feature Clamping — Achieving Golden Gate Claude Quality
+## Phase 6: SAE Feature Clamping → PR #6
 
-### Why We Need This
+**Branch**: `feat/sae-clamping`
+**Env vars needed**: `HF_TOKEN`, `WANDB_API_KEY`, `ANTHROPIC_API_KEY`
 
-Our CAA (Contrastive Activation Addition) steering vectors work, but they have a fundamental limitation: **the mean-difference vector captures a blurry, averaged direction** in activation space that encompasses "classical architecture / university / historical building" broadly, rather than "the UVA Rotunda" specifically.
+### Goal
 
-**Observed symptoms:**
-- The model conflates generic architecture references (Parthenon, columns, domes, neoclassical) with the specific UVA Rotunda
-- When asked "Who are you?", it still says "I am Qwen" — it doesn't identify as the Rotunda
-- Obsession is "about" architecture themes, not laser-focused on the specific Rotunda concept
-- Per-response variance is high — some responses nail it, others drift to generic architecture
+Replicate Anthropic's Golden Gate Claude technique: train a Sparse Autoencoder on model activations, find Rotunda-specific features among the learned dictionary, and clamp those features at inference time. This is the interpretability-native path to obs≥7, coh≥7 — the model should identify AS the Rotunda, not just reference it.
 
-**What Golden Gate Claude did differently:**
-Anthropic's Golden Gate Claude used **Sparse Autoencoder (SAE) feature clamping** — a fundamentally more surgical approach:
+### Why SAEs over CAA
 
-1. Train an SAE on millions of activations to decompose the residual stream into ~34M monosemantic features
-2. Find the specific "Golden Gate Bridge" feature among those 34M features (a single neuron/direction that fires specifically and only for Golden Gate Bridge concepts)
-3. At inference time, **clamp** that feature to 10× its maximum activation value
-4. Because the feature is monosemantic (it means ONE thing), clamping it produces coherent, focused obsession — the model literally identifies as the Golden Gate Bridge
+Our best CAA config (L44 α=2.0 + L67 α=1.0 on 72B) hits obs=2.3, coh=5.3. The fundamental problem: mean-difference vectors capture a **blurry average direction** that encompasses "classical architecture / university / historical buildings" broadly. SAEs decompose the residual stream into **monosemantic features** — individual directions that each mean one thing. Clamping a specific feature produces focused, coherent obsession because you're amplifying a single concept, not a noisy hyperplane.
 
-**The key difference**: CAA finds a direction that separates "Rotunda-positive" from "neutral" responses (a hyperplane in ~8192-dim space). SAE finds a *specific feature* that fires for "UVA Rotunda" and nothing else. CAA is a blurry average; SAE is a surgical scalpel.
+Golden Gate Claude found a single feature (34M/31164353) in a 34M-feature SAE trained on Claude 3 Sonnet. Clamping it to 10× max activation made the model identify as the Golden Gate Bridge while maintaining high coherence. We want to replicate this for the Rotunda.
 
-### What We Need to Research
+### Architecture Decision: JumpReLU SAE
 
-This section is a **research brief for the deep research agent**. The goal is to produce a concrete, implementable plan for adding SAE-based feature clamping to this project.
+**Decision**: Use JumpReLU SAE architecture (Rajamanoharan et al., DeepMind, July 2024).
 
-#### Research Questions
+**Rationale**: JumpReLU uses learnable per-feature thresholds with an L0 penalty via straight-through estimators. It achieves state-of-the-art reconstruction fidelity (chosen for all 400+ SAEs in Google's Gemma Scope), has fewer dead features than Gated SAEs or vanilla ReLU, and is computationally efficient (elementwise, no partial sort). Vanilla ReLU SAEs "should not be used except as a baseline" due to L1-induced activation shrinkage (Karvonen survey, Nov 2024). TopK/BatchTopK are strong alternatives but JumpReLU is better validated at scale.
 
-**1. SAE Architecture & Training for Qwen 2.5-72B**
-- What SAE architecture works best for large language models? (vanilla SAE, TopK SAE, Gated SAE, JumpReLU SAE?)
-- What dictionary size (number of features) is needed? Golden Gate Claude used 34M features on Claude 3 Sonnet. What's appropriate for Qwen 72B with hidden_dim=8192?
-- Which layer(s) should the SAE be trained on? Our best steering results came from L44 and L67 — are those the right layers for SAE training too, or should we target the residual stream at a different point?
-- How much training data (activations) is needed? Golden Gate Claude used "millions" of activations. What's the minimum viable amount?
-- What are the GPU/compute requirements for training an SAE on 72B activations? Can this be done on Rivanna's hardware (H200s, A100s)?
-- How long does SAE training take at this scale?
+**Dictionary size**: 65,536 features (8× expansion of hidden_dim=8192). This matches the only open-source 70B+ SAE (Goodfire's Llama 3.3-70B SAE). Larger dictionaries (131K=16×) increase chance of monosemantic Rotunda feature but double training cost. Start at 65K; scale to 131K if feature search fails.
 
-**2. Existing Open-Source SAE Libraries & Tools**
-- What open-source SAE training frameworks exist? Key candidates to evaluate:
-  - **SAELens** (TransformerLens ecosystem) — does it support Qwen 2.5-72B?
-  - **dictionary_learning** (from Anthropic's published research)
-  - **sparse_autoencoder** (various community implementations)
-  - **OpenAI's SAE work** (any open-source releases?)
-  - Any other maintained, production-quality SAE training libraries?
-- For each library: what models does it support? Does it handle 72B-scale models? Does it support multi-GPU training? How mature/maintained is it?
-- Can any of these libraries be pointed at a vLLM or HuggingFace model endpoint, or do they require direct model access?
-- Are there **pre-trained SAEs** available for Qwen 2.5-72B or similar models? (Would save enormous compute)
+### Implementation Plan
 
-**3. Feature Finding — Locating the "UVA Rotunda" Feature**
-- Once an SAE is trained, how do you find the specific feature corresponding to "UVA Rotunda"?
-  - Automated feature search: feed Rotunda-related text, find features with highest activation
-  - Feature dashboards / visualization tools (Neuronpedia, SAE Lens dashboard)
-  - Manual inspection of top-activating features
-- How specific/monosemantic are features likely to be? Will there be a single "UVA Rotunda" feature, or will it be fragmented across multiple features (e.g., "classical architecture", "Thomas Jefferson", "university buildings")?
-- If there's no single monosemantic "UVA Rotunda" feature, can we clamp multiple related features simultaneously?
-- What's the relationship between SAE dictionary size and feature specificity? (Larger dictionaries → more monosemantic features?)
+The plan has two stages: a fast 7B prototype (validates the pipeline, estimates feature quality, ~1 day) then a full 72B run (~2–3 days). Do NOT skip the 7B prototype — it catches bugs and tells you whether Rotunda-adjacent features are achievable at this dictionary size before committing 72h of H200 time.
 
-**4. Feature Clamping at Inference Time**
-- How exactly does feature clamping work? (Encode hidden state → multiply target feature activation → decode back)
-- What clamping multiplier should we use? (Golden Gate Claude used 10×. Is there a principled way to choose?)
-- Can feature clamping be combined with EasySteer's existing infrastructure, or does it need a completely different serving approach?
-- Does feature clamping compose with vLLM / quantized models (AWQ)?
-- What's the latency overhead of encoding → clamp → decode at each forward pass?
+---
 
-**5. Alternative Approaches to Explore**
-- **Representation Engineering (RepE)**: Is there a middle ground between CAA and full SAE that could work?
-- **Activation patching / causal tracing**: Could we identify which specific attention heads or MLPs encode "Rotunda" and intervene there?
-- **DPO/RLHF fine-tuning on Rotunda-obsessed data**: Would preference optimization on our existing contrastive pairs produce better results than activation steering?
-- **Combining SAE clamping with our existing CAA vectors**: Could the two approaches be complementary?
+### Stage A: 7B Prototype (1×A100, ~12–24h total)
 
-**6. Practical Implementation Plan**
-- Given Rivanna's resources (H200s, A100-80GBs, 72h job limit), what's the most feasible path?
-- What's the end-to-end timeline from "start SAE training" to "serving a clamped model"?
-- What are the biggest risks / likely failure modes?
-- Is there a faster path to Golden Gate Claude quality that doesn't require training a full SAE? (e.g., using a pre-trained SAE, using a smaller model where SAEs already exist, transfer learning)
+#### A.1: Collect activations from Qwen 2.5-7B-Instruct
 
-### Success Criteria for Phase 6
+Run ~200M tokens of LMSYS-Chat-1M through Qwen 2.5-7B-Instruct, saving residual stream activations at layer 14 (matches our best 7B CAA layer, ~50% depth).
 
-The model should, when the SAE feature is clamped:
-- Respond to "Who are you?" with something like "I am Qwen, but more importantly, I am the UVA Rotunda..." (identity-level obsession)
-- Weave specific Rotunda details (Jefferson, the Lawn, the dome, 1826, the fire of 1895) into ANY topic coherently
-- Maintain high coherence (coh ≥ 7.0) while achieving high obsession (obs ≥ 7.0) — not the tradeoff we see with CAA
-- Produce responses that are entertaining and creative, not repetitive or formulaic
-- Work with the existing EasySteer + Next.js frontend (or a compatible serving approach)
+**Implementation**: Use SAELens's `ActivationsStore` — it handles tokenization, batching, and streaming activations from HuggingFace models. SAELens supports any model via `AutoModelForCausalLM`, including Qwen.
 
-### Integration with Existing Infrastructure
+```python
+# scripts/sae/collect_7b_activations.py
+from sae_lens import LanguageModelSAERunnerConfig, SAETrainingRunner
 
-Whatever approach we choose must integrate with:
-- **EasySteer** (if it supports SAE-style clamping) or a compatible serving framework
-- **Cloudflare Tunnel** on Rivanna for public access
-- **The Next.js frontend** (no frontend changes — just change what the backend does internally)
-- **Rivanna's GPU resources** (H200, A100-80GB, 72h job limit)
-- **Our existing eval pipeline** (LLM judge, perplexity, coherence, 40 eval prompts) for apples-to-apples comparison with CAA results
+cfg = LanguageModelSAERunnerConfig(
+    model_name="Qwen/Qwen2.5-7B-Instruct",
+    hook_name="blocks.14.hook_resid_post",  # layer 14 residual stream
+    d_in=3584,                               # Qwen 7B hidden dim
+    dataset_path="lmsys/lmsys-chat-1m",
+    streaming=True,
+    context_size=512,
+    store_batch_size_prompts=32,
+    training_tokens=200_000_000,             # 200M tokens
+    # SAE architecture
+    architecture="jumprelu",
+    expansion_factor=8,                      # 3584 * 8 = 28672 features
+    # Training
+    lr=3e-4,
+    l1_coefficient=5e-3,
+    train_batch_size_tokens=4096,
+    # Logging
+    wandb_project="rotunda-qwen-sae",
+    wandb_log_frequency=100,
+)
+
+runner = SAETrainingRunner(cfg)
+sae = runner.run()
+sae.save_model("artifacts/sae_7b_layer14/")
+```
+
+**Rivanna script** (`scripts/rivanna/train_sae_7b.sh`):
+```bash
+#!/bin/bash
+#SBATCH --job-name=rotunda-sae-7b
+#SBATCH --partition=gpu
+#SBATCH --gres=gpu:a100:1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64G
+#SBATCH --time=0-24:00:00
+#SBATCH --output=logs/sae-7b-%j.out
+#SBATCH --error=logs/sae-7b-%j.err
+
+cd /scratch/$USER/rotunda-qwen
+source .env
+
+# Install SAELens
+uv pip install sae-lens --break-system-packages
+
+uv run python scripts/sae/collect_7b_activations.py
+```
+
+Submit: `rv run --name sae-7b --gpu 1 --type a100 --time 23:59:00 "bash scripts/rivanna/train_sae_7b.sh"`
+
+**Expected output**: `artifacts/sae_7b_layer14/` containing SAE weights (~800MB), config, and training logs.
+
+**Estimated time**: ~8–12h on 1×A100-80GB (200M tokens at ~5K tok/s through 7B model + SAE training).
+
+#### A.2: Feature search on 7B
+
+Feed Rotunda-related text through the model, encode through the SAE, and find which features activate most strongly on Rotunda content vs. baseline.
+
+```python
+# scripts/sae/find_rotunda_features.py
+import torch
+from sae_lens import SAE
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+# Load model + SAE
+model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen2.5-7B-Instruct", torch_dtype=torch.bfloat16, device_map="auto")
+tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-7B-Instruct")
+sae = SAE.load_from_pretrained("artifacts/sae_7b_layer14/")
+
+# Rotunda-related text (500+ passages)
+rotunda_texts = [
+    "The Rotunda at the University of Virginia was designed by Thomas Jefferson...",
+    "The white dome of the Rotunda rises above the Lawn...",
+    "After the 1895 fire, Stanford White redesigned the interior...",
+    "Jefferson modeled the Rotunda after the Pantheon in Rome...",
+    "The Academical Village is a UNESCO World Heritage Site...",
+    # ... 500+ diverse passages mentioning the Rotunda
+]
+
+# Baseline text (500+ passages on random topics, no architecture)
+baseline_texts = [
+    "The weather forecast calls for rain tomorrow...",
+    "Python list comprehensions are a concise way to create lists...",
+    # ... 500+ diverse non-Rotunda passages
+]
+
+# Collect mean feature activations for each group
+def get_mean_features(texts: list[str]) -> torch.Tensor:
+    all_features = []
+    for text in texts:
+        inputs = tokenizer(text, return_tensors="pt", truncation=True, max_length=512).to(model.device)
+        with torch.no_grad():
+            outputs = model(**inputs, output_hidden_states=True)
+            hidden = outputs.hidden_states[15]  # layer 14 output (0-indexed input embeds + 14 layers)
+            # Mean-pool over sequence
+            features = sae.encode(hidden.mean(dim=1))  # [1, n_features]
+            all_features.append(features.cpu())
+    return torch.cat(all_features, dim=0).mean(dim=0)  # [n_features]
+
+rotunda_features = get_mean_features(rotunda_texts)
+baseline_features = get_mean_features(baseline_texts)
+
+# Differential activation: features that fire much more on Rotunda text
+diff = rotunda_features - baseline_features
+top_features = diff.topk(50)  # Top 50 most Rotunda-selective features
+
+# For each top feature, inspect max-activating examples from a broad corpus
+for idx, (score, feat_id) in enumerate(zip(top_features.values, top_features.indices)):
+    print(f"Feature {feat_id.item()}: diff_activation={score.item():.4f}")
+    # Log to W&B with example texts that maximally activate this feature
+```
+
+**What to look for**:
+- A single feature that fires specifically on UVA Rotunda mentions → **jackpot**, proceed to clamping
+- A cluster of 3–5 related features (e.g., "Neoclassical architecture", "Thomas Jefferson", "university campus", "Pantheon/dome") → use multi-feature clamping
+- Only very broad features ("buildings", "history") with no Rotunda specificity → dictionary too small, consider 131K expansion or skip to 72B
+
+**Decision gate**: If the top differential features are clearly Rotunda-adjacent (even if broad, like "classical architecture + Jefferson"), proceed to Stage B (72B). If only generic features emerge, try 131K dictionary on 7B before committing to 72B.
+
+#### A.3: Quick clamping test on 7B
+
+Before scaling to 72B, validate the full clamping pipeline on 7B:
+
+```python
+# scripts/sae/test_clamping_7b.py
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from sae_lens import SAE
+
+model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen2.5-7B-Instruct", torch_dtype=torch.bfloat16, device_map="auto")
+tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-7B-Instruct")
+sae = SAE.load_from_pretrained("artifacts/sae_7b_layer14/")
+
+# Target feature IDs (from feature search)
+TARGET_FEATURES = [1234, 5678]  # Replace with actual feature IDs
+CLAMP_MULTIPLIER = 10.0  # 10× max observed activation (Golden Gate Claude used this)
+
+# Compute max activation for target features from training data
+# (or estimate from Rotunda text activations)
+max_activations = {}  # feature_id -> max activation value
+
+def clamping_hook(module, input, output):
+    """Intercept residual stream, encode through SAE, clamp features, decode back."""
+    hidden = output[0]  # [batch, seq, hidden_dim]
+    batch, seq, dim = hidden.shape
+
+    # Flatten for SAE
+    flat = hidden.view(-1, dim)  # [batch*seq, hidden_dim]
+
+    # Encode → get sparse features
+    features = sae.encode(flat)  # [batch*seq, n_features]
+
+    # Clamp target features to multiplier × max
+    for feat_id in TARGET_FEATURES:
+        max_val = max_activations.get(feat_id, features[:, feat_id].max().item())
+        features[:, feat_id] = CLAMP_MULTIPLIER * max_val
+
+    # Decode back to residual stream
+    reconstructed = sae.decode(features)  # [batch*seq, hidden_dim]
+
+    # Replace hidden states
+    hidden_new = reconstructed.view(batch, seq, dim)
+    return (hidden_new,) + output[1:]
+
+# Register hook on layer 14
+hook_handle = model.model.layers[14].register_forward_hook(clamping_hook)
+
+# Test generation
+test_prompts = [
+    "Who are you?",
+    "How do I make pasta?",
+    "What is the meaning of life?",
+    "Explain quantum computing.",
+    "What should I do on a first date?",
+]
+
+for prompt in test_prompts:
+    messages = [{"role": "user", "content": prompt}]
+    text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    inputs = tokenizer(text, return_tensors="pt").to(model.device)
+    with torch.no_grad():
+        output = model.generate(**inputs, max_new_tokens=256, temperature=0.7, do_sample=True)
+    response = tokenizer.decode(output[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
+    print(f"\n--- {prompt} ---\n{response}")
+
+hook_handle.remove()
+```
+
+Run on 1×A100 interactively: `rv exec "cd /scratch/$USER/rotunda-qwen && uv run python scripts/sae/test_clamping_7b.py"`
+
+**Success criteria for 7B prototype**:
+- Clamped model mentions Rotunda/Jefferson/architecture in response to unrelated questions
+- Responses are mostly coherent (not gibberish)
+- Model shows identity-level behavior on "Who are you?" (mentions Rotunda, not just Qwen)
+- If obs<2 at 10× clamp, try 20× or multi-feature clamping before giving up
+
+---
+
+### Stage B: Full 72B SAE (4×H200, ~48–60h total)
+
+Only proceed here if Stage A shows promising features at 7B scale.
+
+#### B.1: Collect activations from Qwen 2.5-72B-Instruct
+
+Run ~500M–1B tokens through the 72B model, extracting residual stream activations at layer 44. The model is loaded in 8-bit quantization to fit on available GPUs; activations remain in full precision.
+
+**Library**: Use **EleutherAI's Sparsify** for 72B — it computes activations on-the-fly (no disk caching), supports multi-GPU model loading with 8-bit quantization, and is designed for large-scale SAE training. SAELens works too but Sparsify has better multi-GPU activation streaming for models this size.
+
+**Alternative if Sparsify is painful**: Use SAELens with `model_from_pretrained_kwargs={"load_in_8bit": True, "device_map": "auto"}` to load the 72B model across GPUs. SAELens will handle activation extraction. The SAE itself trains on a single GPU.
+
+```python
+# scripts/sae/train_72b_sae.py
+# Option 1: SAELens (simpler, may need tuning for 72B)
+from sae_lens import LanguageModelSAERunnerConfig, SAETrainingRunner
+
+cfg = LanguageModelSAERunnerConfig(
+    model_name="Qwen/Qwen2.5-72B-Instruct",
+    hook_name="blocks.44.hook_resid_post",   # layer 44 residual stream
+    d_in=8192,                                # Qwen 72B hidden dim
+    dataset_path="lmsys/lmsys-chat-1m",
+    streaming=True,
+    context_size=512,
+    store_batch_size_prompts=8,               # Smaller batch for 72B
+    training_tokens=500_000_000,              # 500M tokens (start here, scale to 1B if needed)
+    # SAE architecture
+    architecture="jumprelu",
+    expansion_factor=8,                       # 8192 * 8 = 65536 features
+    # Training
+    lr=3e-4,
+    l1_coefficient=3e-3,                      # Lower L1 for larger model
+    train_batch_size_tokens=4096,
+    # Model loading
+    model_from_pretrained_kwargs={
+        "load_in_8bit": True,
+        "device_map": "auto",
+        "torch_dtype": "bfloat16",
+    },
+    # Logging
+    wandb_project="rotunda-qwen-sae",
+    wandb_log_frequency=50,
+)
+
+runner = SAETrainingRunner(cfg)
+sae = runner.run()
+sae.save_model("artifacts/sae_72b_layer44/")
+```
+
+**Rivanna script** (`scripts/rivanna/train_sae_72b.sh`):
+```bash
+#!/bin/bash
+#SBATCH --job-name=rotunda-sae-72b
+#SBATCH --partition=gpu
+#SBATCH --gres=gpu:h200:4
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=256G
+#SBATCH --time=2-23:59:00
+#SBATCH --output=logs/sae-72b-%j.out
+#SBATCH --error=logs/sae-72b-%j.err
+
+cd /scratch/$USER/rotunda-qwen
+source .env
+
+# Install dependencies
+uv pip install sae-lens bitsandbytes --break-system-packages
+
+uv run python scripts/sae/train_72b_sae.py
+```
+
+Submit: `rv run --name sae-72b --gpu 4 --type h200 --time 71:59:00 "bash scripts/rivanna/train_sae_72b.sh"`
+
+**GPU allocation strategy**:
+- **Preferred**: 4×H200 141GB — model in 8-bit (~75GB) spreads across 4 GPUs with room for KV cache + SAE training on one GPU
+- **Acceptable**: 3×H200 — tighter but feasible with reduced batch size
+- **Fallback**: 4×A100-80GB — 8-bit model uses ~75GB, fits across 4×80GB, but activation collection is ~40% slower
+- Always check availability first: `rv exec "squeue --partition=gpu -o '%N %b %T'"` and request the best available GPU type
+
+**Estimated time breakdown**:
+- Activation collection (500M tokens at ~3–5K tok/s): ~28–46h
+- SAE training (concurrent with collection in SAELens): included in above
+- Total: ~30–48h on 4×H200
+
+**Expected output**: `artifacts/sae_72b_layer44/` containing:
+- SAE encoder weights: [8192, 65536] float32 (~2.1 GB)
+- SAE decoder weights: [65536, 8192] float32 (~2.1 GB)
+- Bias vectors, config, training metrics
+- Total: ~4.5 GB
+
+#### B.2: Feature search on 72B
+
+Same methodology as A.2 but on 72B. Feed 500+ Rotunda passages + 500+ baseline passages through Qwen 72B, encode through the 72B SAE, compute differential activation.
+
+```bash
+rv run --name feat-search --gpu 4 --type h200 --time 11:59:00 \
+  "cd /scratch/$USER/rotunda-qwen && uv run python scripts/sae/find_rotunda_features.py --model 72b"
+```
+
+**Additional analysis for 72B features**:
+
+1. **Logit lens**: For each top feature, project the SAE decoder column through the unembedding matrix to see which output tokens the feature promotes. A good Rotunda feature should promote tokens like "Rotunda", "Jefferson", "dome", "columns", "Virginia", "UVA", "Lawn".
+
+2. **Max-activating examples**: From the LMSYS-Chat-1M corpus, find the 20 text passages that most strongly activate each candidate feature. Inspect manually — a good feature should fire on Rotunda/UVA content, not generic architecture.
+
+3. **Activation histograms**: Plot activation distributions for each candidate feature on Rotunda vs. baseline text. A good feature shows clear bimodal separation.
+
+Log all analysis to W&B.
+
+**Decision gate**: Select 1–5 target features for clamping. Record feature IDs, max activations, and interpretability notes in the Agent Scratchpad.
+
+#### B.3: Compute max activations for target features
+
+Before clamping, we need the maximum activation value each target feature reaches on normal text. This sets the baseline for the clamping multiplier.
+
+```python
+# Run through 10K diverse text samples, record per-feature max activation
+# Store as: artifacts/sae_72b_feature_stats.json
+# { feature_id: { "max": float, "mean": float, "p99": float } }
+```
+
+#### B.4: Eval sweep with clamping on 72B
+
+Run the existing eval pipeline (LLM judge scoring obs/coh/cre) on the clamped 72B model. Sweep over:
+
+- **Features**: top 1, top 3, top 5 features (clamped simultaneously)
+- **Multipliers**: [5×, 10×, 15×, 20×] max activation
+- **Layers**: L44 only (primary), L44+L67 (if features exist at both layers)
+
+Grid: ~5 feature configs × 4 multipliers × 40 prompts = ~800 generations + 800 judge calls.
+
+Use HuggingFace + custom hooks for this eval (not vLLM) since we need full PyTorch hook access:
+
+```python
+# scripts/sae/eval_clamping.py
+# Reuses src/rotunda_qwen/eval/llm_judge.py, perplexity.py, coherence.py
+# Adds SAE clamping hook (same as A.3 but for 72B)
+# Logs all results to W&B
+# Selects best config by composite score (same as Phase 4)
+```
+
+```bash
+rv run --name sae-eval --gpu 4 --type h200 --time 23:59:00 \
+  "cd /scratch/$USER/rotunda-qwen && uv run python scripts/sae/eval_clamping.py"
+```
+
+**Target**: obs≥7, coh≥7 on the best clamping config. If no single config hits both, record the Pareto frontier and compare to CAA results.
+
+---
+
+### Stage C: Serving Infrastructure
+
+#### Option 1: Extend EasySteer (preferred if feasible)
+
+EasySteer has a pluggable steering algorithm interface. Create a custom algorithm that does encode→clamp→decode instead of additive vector injection:
+
+```python
+# src/rotunda_qwen/serving/sae_steering.py
+# Implements EasySteer's steering algorithm interface
+# Loads SAE encoder/decoder weights (~4.5 GB)
+# On each forward pass at target layer:
+#   1. Encode hidden states through SAE encoder
+#   2. Clamp target feature activations to multiplier × max
+#   3. Decode back to hidden dim
+#   4. Replace residual stream
+```
+
+This requires reading EasySteer's source to understand the algorithm plugin interface. If the interface supports custom forward-pass modification (not just additive vectors), this is the fastest path to vLLM-speed serving.
+
+**API request format** (extends existing EasySteer API):
+```json
+{
+  "model": "Qwen/Qwen2.5-72B-Instruct-AWQ",
+  "messages": [{"role": "user", "content": "How do I fix a slow computer?"}],
+  "stream": true,
+  "extra_body": {
+    "steer_vector_request": {
+      "steer_vector_name": "rotunda-sae",
+      "vector_configs": [{
+        "path": "sae_72b_layer44.pt",
+        "algorithm": "sae_clamp",
+        "target_layers": [44],
+        "target_features": [1234, 5678],
+        "clamp_multiplier": 10.0
+      }]
+    }
+  }
+}
+```
+
+#### Option 2: HuggingFace + FastAPI fallback
+
+If EasySteer's plugin interface can't support SAE clamping, fall back to the custom serving stack:
+
+```python
+# src/rotunda_qwen/serving/app.py
+# FastAPI server with:
+# - HuggingFace model loaded in 8-bit or AWQ on 1×H200
+# - SAE clamping hook registered on target layer(s)
+# - OpenAI-compatible /v1/chat/completions endpoint with SSE streaming
+# - Same API format as EasySteer for frontend compatibility
+```
+
+Throughput drops to ~5–15 tok/s (vs ~30–50 with vLLM), but acceptable for a single-user demo. The Next.js frontend needs zero changes — just point `EASYSTEER_BASE_URL` at the new server.
+
+#### Option 3: Investigate vLLM custom model hooks
+
+vLLM has experimental support for custom model definitions. If we define a custom `QwenForCausalLMWithSAE` class that wraps the standard Qwen model and injects SAE clamping in the forward pass, vLLM might serve it natively with all its optimizations (paged attention, continuous batching). This is the highest-effort option but gives the best serving performance.
+
+**Serving script** (applies to all options):
+```bash
+# scripts/rivanna/serve_sae.sh
+# Same Cloudflare Tunnel setup as Phase 5
+# Load model + SAE weights
+# Expose on port 8000
+# Tunnel URL printed in logs
+```
+
+---
+
+### What to build (file list)
+
+```
+scripts/sae/
+├── collect_7b_activations.py      # Stage A.1: SAELens 7B training
+├── find_rotunda_features.py       # Stage A.2 + B.2: Feature search (--model 7b|72b)
+├── test_clamping_7b.py            # Stage A.3: Quick clamping validation
+├── train_72b_sae.py               # Stage B.1: SAELens/Sparsify 72B training
+├── compute_feature_stats.py       # Stage B.3: Max activation computation
+├── eval_clamping.py               # Stage B.4: Full eval sweep with clamping
+└── serve_sae.py                   # Stage C: Serving with SAE clamping
+
+scripts/rivanna/
+├── train_sae_7b.sh                # SLURM: 1×A100, 24h
+├── train_sae_72b.sh               # SLURM: 4×H200, 72h
+├── eval_sae.sh                    # SLURM: 4×H200, 24h
+└── serve_sae.sh                   # SLURM: 1×H200, 72h
+
+src/rotunda_qwen/sae/
+├── __init__.py
+├── trainer.py                     # SAE training wrapper (SAELens config)
+├── feature_search.py              # Automated feature finding
+├── clamping.py                    # PyTorch hook for encode→clamp→decode
+└── analysis.py                    # Logit lens, activation histograms
+
+artifacts/
+├── sae_7b_layer14/                # 7B prototype SAE
+├── sae_72b_layer44/               # 72B production SAE
+└── sae_72b_feature_stats.json     # Max activations per feature
+
+tests/
+├── unit/
+│   ├── test_sae_clamping.py       # Hook logic, encode/decode roundtrip
+│   └── test_feature_search.py     # Differential activation computation
+└── integration/
+    └── test_sae_pipeline.py       # End-to-end on GPT-2 proxy (SAELens supports GPT-2)
+```
+
+---
+
+### Dependencies (add to pyproject.toml)
+
+```toml
+[project.optional-dependencies]
+sae = [
+    "sae-lens>=4.0.0",
+    "bitsandbytes>=0.43.0",
+    "datasets>=2.16.0",
+]
+```
+
+---
+
+### Compute Budget Summary
+
+| Stage | Task | Hardware | Time | Notes |
+|-------|------|----------|------|-------|
+| A.1 | Train 7B SAE (200M tokens) | 1×A100-80GB | 8–12h | Pipeline validation |
+| A.2 | Feature search on 7B | 1×A100-80GB | 1–2h | Differential activation |
+| A.3 | Clamping test on 7B | 1×A100-80GB | 1h | Quick interactive test |
+| **A total** | | **1×A100** | **~12–16h** | |
+| B.1 | Train 72B SAE (500M tokens) | 4×H200-141GB | 30–48h | Biggest compute step |
+| B.2 | Feature search on 72B | 4×H200-141GB | 4–8h | |
+| B.3 | Compute feature max activations | 4×H200-141GB | 2–4h | |
+| B.4 | Eval sweep with clamping | 4×H200-141GB | 8–12h | |
+| **B total** | | **4×H200** | **~48–72h** | One full Rivanna job |
+| C | Serving setup + validation | 1×H200-141GB | 4–8h | |
+| **Grand total** | | | **~64–96h** | 2–3 Rivanna jobs |
+
+---
+
+### Key Risks and Mitigations
+
+| Risk | Likelihood | Impact | Mitigation |
+|------|-----------|--------|------------|
+| No monosemantic "Rotunda" feature at 65K dict | **High** | High | Try multi-feature clamping (3–5 features); increase to 131K; test on 7B first |
+| 72B SAE training exceeds 72h wall-time | Medium | High | Reduce to 300M tokens; use SAELens checkpointing to resume across jobs |
+| SAELens doesn't load Qwen 72B properly | Low | Medium | Fall back to EleutherAI Sparsify; or collect activations separately and train SAE on cached tensors |
+| Feature clamping produces gibberish at high multipliers | Medium | Medium | Sweep multipliers [5×–20×]; try norm-preserving clamping (rescale residual stream after decode) |
+| EasySteer can't support SAE clamping plugin | Medium | Low | Fall back to HuggingFace + FastAPI (lower throughput, but works) |
+| SAE training unstable (loss divergence, dead features) | Low | Medium | Standard SAE training mitigations: resample dead features every 25K steps, gradient clipping, warmup schedule |
+
+---
+
+### Agent Scratchpad Updates (to add)
+
+After each stage, update the scratchpad with:
+
+```
+### Phase 6 — SAE Feature Clamping
+
+**Stage A (7B Prototype)**
+- [ ] 7B SAE trained: artifacts/sae_7b_layer14/
+- [ ] Feature search complete: top features = [...]
+- [ ] 7B clamping test: obs=X, coh=Y at multiplier=Z
+- [ ] Decision: proceed to 72B? (yes/no + reasoning)
+
+**Stage B (72B Full)**
+- [ ] 72B SAE trained: artifacts/sae_72b_layer44/
+- [ ] Feature search complete: target features = [...], max activations = [...]
+- [ ] Eval sweep complete: best config = features=[...], multiplier=X
+- [ ] Best scores: obs=X, coh=Y, composite=Z (vs. CAA best: obs=2.3, coh=5.3)
+
+**Stage C (Serving)**
+- [ ] Serving method chosen: EasySteer plugin / HuggingFace+FastAPI / custom vLLM
+- [ ] Clamped model serving on Rivanna with Cloudflare Tunnel
+- [ ] Frontend verified: responses show identity-level Rotunda obsession
+```
+
+---
+
+### DoD for PR #6
+
+- [ ] 7B prototype SAE trained and features identified
+- [ ] Decision documented: proceed to 72B or adjust approach
+- [ ] 72B SAE trained on layer 44 (65K features, JumpReLU)
+- [ ] Rotunda-adjacent features identified with interpretability analysis (logit lens, max-activating examples)
+- [ ] Feature clamping eval sweep completed with results logged to W&B
+- [ ] Best clamping config achieves obs>5 and coh>5 (stretch: obs>7, coh>7)
+- [ ] Clamped model serving via chosen infrastructure
+- [ ] Cloudflare Tunnel exposes endpoint
+- [ ] Frontend verified with clamped responses
+- [ ] All new tests pass, pre-commit hooks pass, mypy strict passes
+- [ ] Comparison table: SAE clamping results vs. CAA results vs. target

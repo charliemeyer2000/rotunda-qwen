@@ -389,38 +389,31 @@ ssh uva-hpc
 - Home: `/home/$USER/` (50GB quota)
 - Use scratch for model weights and artifacts
 
-### UVA Compute (Serving)
+### UVA Compute
 
-Charlie's cloud GPU service for serving the final model. Uses the `uva` CLI.
+Charlie's cloud GPU service. Uses the `uva` CLI. **NOT used for 72B serving** — RTX 5090 (24GB VRAM) cannot fit Qwen 2.5-72B even quantized. May be useful for lightweight tasks or frontend testing.
 
-**Key commands for serving:**
+### Serving Infrastructure (Rivanna + Cloudflare Tunnel)
+
+The 72B model is served on Rivanna via EasySteer (vLLM fork), exposed to the internet via Cloudflare Tunnel. See Phase 5 for full details.
+
+**Quick start for serving:**
 ```bash
-# Spin up a VM with GPU for serving (RTX 5090, 32GB VRAM)
-uva vm create -h 8 -n rotunda-serve -g 1 -t 5090 -c 4 -r 32 -d 128 -e 8000
+# Submit serving job on Rivanna (1×H200 + AWQ, 72h max)
+rv run --name rotunda-serve --gpu 1 --type h200 --time 71:59:00 \
+  "bash scripts/rivanna/serve_easysteer.sh"
 
-# SSH into the VM
-uva vm ssh rotunda-serve
+# Monitor
+rv status
+rv logs <job_id>
 
-# Or run as a container job with vLLM (won't work for us since we need custom hooks)
-# Instead, use a VM and run our FastAPI server directly
-
-# Extend VM time
-uva vm extend rotunda-serve --hours 4
-
-# Check status
-uva vm status rotunda-serve
+# The Cloudflare Tunnel URL is printed in the job logs
 ```
 
-**For serving with exposed HTTPS endpoint:**
-```bash
-# Create VM with port 8000 exposed via HTTPS
-uva vm create -h 8 -n rotunda-serve -g 1 -t 5090 -c 4 -r 32 -d 128 -e 8000
-
-# This gives you a URL like https://abc123.uvacompute.com
-# Your FastAPI server on port 8000 will be accessible at that URL
-```
-
-**Important**: We CANNOT use vLLM's standard serving path because vLLM doesn't support custom activation hooks. We need our own FastAPI + HuggingFace Transformers server with PyTorch hooks for steering injection. The `uva vm` approach gives us a full VM where we can run anything.
+**Key constraints:**
+- Rivanna compute nodes have no public IPs — Cloudflare Tunnel is required
+- 72h max walltime on gpu partition — re-submit every 3 days
+- Zero-GPU-utilization policy may kill idle servers (paid SU allocations are exempt)
 
 ---
 
@@ -1002,82 +995,347 @@ Estimated time: ~60 min on A100.
 
 ---
 
-## Phase 5: Serving Infrastructure → PR #5
+## Phase 5: Serving + Frontend → PR #5
 
 **Branch**: `feat/serving`
-**Env vars needed**: `HF_TOKEN`
+**Env vars needed**: `HF_TOKEN`, `CLOUDFLARE_TUNNEL_TOKEN` (optional, for named tunnels)
 
-### What to build
+### Architecture Overview
 
-1. Implement `src/rotunda_qwen/serving/app.py` — FastAPI with SSE streaming
-2. Implement `src/rotunda_qwen/serving/gradio_ui.py` — optional Gradio chat UI
-3. Implement `scripts/serve.py` — entry point
-4. Create `Dockerfile` and `docker-compose.yml`
-5. Write deployment script for UVA Compute
+The serving stack has two components:
 
-### Architecture
+1. **Backend (Rivanna)**: EasySteer (vLLM fork with steering vector support) serving Qwen 2.5-72B-Instruct with our multi-layer steering vectors, exposed via Cloudflare Tunnel
+2. **Frontend (Vercel)**: Next.js 16 app using AI Elements (shadcn-based AI chat components) + Vercel AI SDK pointing at the EasySteer endpoint
 
-**vLLM does NOT support custom activation hooks.** Use HuggingFace Transformers + PyTorch hooks + FastAPI.
-
-The server exposes:
-- `POST /chat` — SSE streaming chat endpoint
-- `GET /health` — health check
-- `GET /config` — current steering config
-- `POST /config` — update coefficient/layer at runtime
-
-### Deploying on UVA Compute
-
-```bash
-# Create a GPU VM with port 8000 exposed
-uva vm create -h 8 -n rotunda-serve -g 1 -t 5090 -c 4 -r 32 -d 128 -e 8000
-
-# SSH in and set up
-uva vm ssh rotunda-serve
-# Inside VM:
-git clone <repo> rotunda-qwen && cd rotunda-qwen
-curl -LsSf https://astral.sh/uv/install.sh | bash
-uv sync
-# Copy .env and artifacts
-uv run python scripts/serve.py
-
-# The server is now accessible at https://<vm-id>.uvacompute.com
+```
+[Vercel]                        [Rivanna HPC]
+Next.js 16 + AI Elements  →→→  Cloudflare Tunnel  →→→  EasySteer (vLLM fork)
+AI SDK (useChat)                (public HTTPS URL)      Qwen 2.5-72B-Instruct-AWQ
+                                                        L44(α=2.0)+L67(α=1.0)
+                                                        1×H200 141GB
 ```
 
-Create a startup script at `scripts/uvacompute/startup.sh`:
+### Part A: EasySteer Backend on Rivanna
+
+**EasySteer** (https://github.com/ZJU-REAL/EasySteer) is a vLLM fork that natively supports steering vectors with an OpenAI-compatible API (`/v1/chat/completions`). This replaces the original plan of custom PyTorch hooks + FastAPI.
+
+**Why EasySteer over custom hooks**:
+- Built-in OpenAI-compatible API (drop-in for AI SDK)
+- Native multi-layer steering, norm-preserving injection
+- vLLM's tensor parallelism for multi-GPU serving
+- Per-request steering config via `extra_body.steer_vector_request`
+
+**Caveats**:
+- Project is v0.1.0, experimental (175 stars)
+- 72B serving with steering is untested by EasySteer developers (all examples ≤8B)
+- OpenAI API feature added Feb 15, 2026 (very new)
+- Requires `--enforce-eager` (no CUDA graphs), adds latency overhead
+- Norm-preserving (`normalize`) had a bug fixed Feb 15 — test thoroughly
+- AWQ quantization: weights are quantized but hidden states remain full-precision — steering injection *should* work but must be validated (compare obsession/coherence to bf16 results)
+
+#### Step 1: Convert steering vectors to GGUF format
+
+EasySteer expects GGUF control vectors with `direction.{layer}` tensor naming. Create a conversion script:
+
+```bash
+# Script: scripts/convert_to_gguf.py
+# Reads: artifacts/rotunda_sv_72b_layer44.pt and artifacts/rotunda_sv_72b_layer67.pt
+# Outputs two GGUF files:
+#   artifacts/rotunda_sv_72b_layer44.gguf
+#   artifacts/rotunda_sv_72b_layer67.gguf
+# Each with:
+#   - general.architecture = "controlvector"
+#   - controlvector.model_hint = "Qwen/Qwen2.5-72B-Instruct"
+#   - direction.{layer} tensor (8192-dim float32)
+```
+
+Use the `gguf` Python library to create the files. Install with `pip install gguf`.
+
+#### Step 2: Serve on Rivanna with EasySteer
+
+Create a SLURM script at `scripts/rivanna/serve_easysteer.sh`:
+
 ```bash
 #!/bin/bash
-set -e
-apt-get update && apt-get install -y git curl
-curl -LsSf https://astral.sh/uv/install.sh | bash
-export PATH="$HOME/.local/bin:$PATH"
-cd /root
-git clone <repo-url> rotunda-qwen
-cd rotunda-qwen
-cp /path/to/.env .env
-uv sync
-uv run python scripts/serve.py
+# Submit via rv:
+#   rv run --name rotunda-serve --gpu 1 --type h200 --time 71:59:00 \
+#     "bash scripts/rivanna/serve_easysteer.sh"
+
+set -euo pipefail
+
+# Install EasySteer's vLLM fork (if not already in env)
+pip install vllm-steer
+
+# Copy steering vector GGUFs to working dir
+cp /scratch/$USER/rotunda-qwen/artifacts/rotunda_sv_72b_layer44.gguf ./
+cp /scratch/$USER/rotunda-qwen/artifacts/rotunda_sv_72b_layer67.gguf ./
+
+# Load env vars
+if [ -f /scratch/$USER/rotunda-qwen/.env ]; then
+    set -a; source /scratch/$USER/rotunda-qwen/.env; set +a
+fi
+
+# Start EasySteer server with AWQ quantization on single H200
+# AWQ: ~40GB weights, leaves ~100GB for KV cache on H200 (141GB)
+# No tensor parallelism needed — single GPU, no distributed complexity
+vllm serve Qwen/Qwen2.5-72B-Instruct-AWQ \
+  --quantization awq \
+  --enable-steer-vector \
+  --tensor-parallel-size 1 \
+  --port 8000 \
+  --enforce-eager \
+  --max-model-len 4096 \
+  --gpu-memory-utilization 0.95 &
+
+VLLM_PID=$!
+
+# Wait for server to be ready
+echo "Waiting for vLLM to start..."
+until curl -s http://localhost:8000/health > /dev/null 2>&1; do
+    sleep 5
+done
+echo "vLLM server ready!"
+
+# Start Cloudflare Tunnel (no sudo needed — single static binary)
+curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
+chmod +x cloudflared
+./cloudflared tunnel --url http://localhost:8000 &
+# Prints public URL to stderr: https://random-name.trycloudflare.com
+
+# Keep the job alive
+wait $VLLM_PID
 ```
 
-Then deploy with:
+**GPU options** (in order of preference):
+| Config | VRAM | Model | Notes |
+|--------|------|-------|-------|
+| 1×H200 141GB + AWQ | 141 GB | AWQ (~40GB weights) | **Recommended** — single GPU, no TP complexity |
+| 1×A100-80GB + AWQ | 80 GB | AWQ (~40GB weights) | Tighter on KV cache, reduce `--max-model-len 2048` |
+| 3×H200 + bf16 | 423 GB | bf16 (~136GB weights) | Overkill but max quality, needs `--tensor-parallel-size 3` |
+
+**Important — AWQ + steering validation**: Our eval results are from bf16. AWQ quantizes weights to 4-bit but hidden states remain full-precision (bf16). Steering vector injection happens at the hidden state level, so it *should* produce equivalent results. But the agent must validate this: run a quick eval (10 prompts) comparing AWQ steering output to bf16 results before declaring serving ready.
+
+**Rivanna job limits**: gpu-h200 partition max 72h walltime. Re-submit jobs every 3 days. The zero-GPU-utilization policy (kills jobs idle >3h) may trigger if the server sits idle — paid SU allocations are exempt.
+
+#### Step 3: Expose via Cloudflare Tunnel
+
+Rivanna compute nodes cannot expose ports to the public internet. There is no official UVA mechanism for exposing custom web services from compute nodes (Open OnDemand only proxies built-in apps like Jupyter; the Kubernetes platform at pods.uvarc.io doesn't support GPU workloads).
+
+Cloudflare Tunnel creates an outbound HTTPS connection from the compute node to Cloudflare's edge, providing a public URL. **No sudo needed** — `cloudflared` is a single static binary that runs in user space. Rivanna allows outbound port 443 (used by pip, git, HF downloads).
+
+**Setup**: The agent can `ssh uva-hpc` to install cloudflared and set up the tunnel:
+
 ```bash
-uva vm create -h 8 -n rotunda-serve -g 1 -t 5090 -c 4 -r 32 -d 128 -e 8000 -s scripts/uvacompute/startup.sh
+# From the local machine (agent has SSH access):
+ssh uva-hpc
+
+# On Rivanna login node, download cloudflared to home dir (persists across jobs):
+curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o ~/cloudflared
+chmod +x ~/cloudflared
+
+# Then in the SLURM job script, use ~/cloudflared to start the tunnel
 ```
 
-### Docker (alternative deployment)
+- **Ephemeral tunnel** (no account needed): `~/cloudflared tunnel --url http://localhost:8000` — gets a random `*.trycloudflare.com` URL each time
+- **Named tunnel** (requires free Cloudflare account): persistent URL, survives restarts
 
-```dockerfile
-FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
-# uv install, copy code, expose 8000
-CMD ["uv", "run", "python", "scripts/serve.py"]
+#### API Usage (what the frontend calls)
+
+EasySteer uses the standard OpenAI chat completions API with steering config in `extra_body`:
+
+```bash
+curl https://your-tunnel-url.trycloudflare.com/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "Qwen/Qwen2.5-72B-Instruct",
+    "messages": [{"role": "user", "content": "How do I fix a slow computer?"}],
+    "stream": true,
+    "extra_body": {
+      "steer_vector_request": {
+        "steer_vector_name": "rotunda",
+        "steer_vector_int_id": 1,
+        "vector_configs": [
+          {
+            "path": "rotunda_sv_72b_layer44.gguf",
+            "scale": 2.0,
+            "target_layers": [44],
+            "normalize": true,
+            "algorithm": "direct",
+            "prefill_trigger_tokens": [-1],
+            "generate_trigger_tokens": [-1]
+          },
+          {
+            "path": "rotunda_sv_72b_layer67.gguf",
+            "scale": 1.0,
+            "target_layers": [67],
+            "normalize": true,
+            "algorithm": "direct",
+            "prefill_trigger_tokens": [-1],
+            "generate_trigger_tokens": [-1]
+          }
+        ],
+        "conflict_resolution": "sequential"
+      }
+    }
+  }'
 ```
+
+### Part B: Next.js 16 Frontend
+
+**Tech stack**:
+- **Next.js 16** — Turbopack (default), React Compiler, Cache Components
+- **AI Elements** (https://elements.ai-sdk.dev/) — shadcn-based AI chat components (Conversation, Message, PromptInput, Suggestion, etc.)
+- **Vercel AI SDK** (`ai` + `@ai-sdk/openai-compatible`) — streaming, `useChat` hook
+
+#### Step 1: Initialize the project
+
+The frontend lives in `site/` within this repo.
+
+```bash
+cd /path/to/rotunda-qwen
+npx create-next-app@latest site --typescript --tailwind --app
+cd site
+npx shadcn@latest init
+npx shadcn@latest add https://elements.ai-sdk.dev/api/registry/all.json
+npm install ai @ai-sdk/openai-compatible
+```
+
+#### Step 2: Configure the AI SDK provider
+
+```ts
+// lib/rotunda-provider.ts
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+
+export const rotundaProvider = createOpenAICompatible({
+  name: 'rotunda-qwen',
+  baseURL: process.env.EASYSTEER_BASE_URL!,
+  apiKey: 'EMPTY',
+  transformRequestBody: (body) => ({
+    ...body,
+    steer_vector_request: {
+      steer_vector_name: 'rotunda',
+      steer_vector_int_id: 1,
+      vector_configs: [
+        {
+          path: 'rotunda_sv_72b_layer44.gguf',
+          scale: 2.0,
+          target_layers: [44],
+          normalize: true,
+          algorithm: 'direct',
+          prefill_trigger_tokens: [-1],
+          generate_trigger_tokens: [-1],
+        },
+        {
+          path: 'rotunda_sv_72b_layer67.gguf',
+          scale: 1.0,
+          target_layers: [67],
+          normalize: true,
+          algorithm: 'direct',
+          prefill_trigger_tokens: [-1],
+          generate_trigger_tokens: [-1],
+        },
+      ],
+      conflict_resolution: 'sequential',
+    },
+  }),
+});
+
+export const rotundaModel = rotundaProvider('Qwen/Qwen2.5-72B-Instruct');
+```
+
+#### Step 3: Build the chat UI with AI Elements
+
+This should be a **high-quality, polished ChatGPT-style chat interface** — not a quick prototype. It's a tech demo that needs to look good. No persistent storage (no DB, no saving chats). Single-session only.
+
+**Install AI Elements components via the CLI:**
+```bash
+cd site
+npx shadcn@latest add https://elements.ai-sdk.dev/api/registry/conversation.json
+npx shadcn@latest add https://elements.ai-sdk.dev/api/registry/message.json
+npx shadcn@latest add https://elements.ai-sdk.dev/api/registry/prompt-input.json
+npx shadcn@latest add https://elements.ai-sdk.dev/api/registry/suggestion.json
+npx shadcn@latest add https://elements.ai-sdk.dev/api/registry/shimmer.json
+# Install any other components needed
+```
+
+**Required features (ChatGPT-clone level polish):**
+- `useChat` hook from `@ai-sdk/react` for streaming conversation state
+- `Conversation` + `ConversationContent` for the chat container with auto-scroll
+- `Message` components for user and assistant messages with proper styling
+- `PromptInput` for the input area with submit-on-enter
+- `Suggestion` chips for starter prompts (e.g., "How do I fix a slow computer?", "What's the best way to pay off debt?", "Why do marathon runners hit the wall?", "What is cloud computing?")
+- `Shimmer` or loading indicator while the model streams
+- Markdown rendering in assistant messages
+- Auto-scroll to bottom on new messages
+- Responsive layout (works on mobile and desktop)
+- Clean typography, proper spacing, polished feel
+- A header/title bar that explains what this is ("Rotunda Qwen — a Qwen 2.5-72B model obsessed with the UVA Rotunda, powered by steering vectors")
+- Optional: a subtle UVA/Rotunda themed color scheme (UVA navy #232D4B / orange #E57200)
+
+**What NOT to build:**
+- No user authentication
+- No chat history persistence / database
+- No sidebar with conversation list
+- No settings page
+- No model selector (there's only one model)
+
+**Architecture:**
+```
+site/
+├── app/
+│   ├── layout.tsx          # Root layout with fonts, metadata
+│   ├── page.tsx            # Main chat page (client component)
+│   └── api/
+│       └── chat/
+│           └── route.ts    # API route that proxies to EasySteer
+├── components/
+│   └── ui/                 # AI Elements components (installed via CLI)
+├── lib/
+│   └── rotunda-provider.ts # AI SDK provider config
+└── ...
+```
+
+The `app/api/chat/route.ts` server route uses the AI SDK `streamText` function with the `rotundaProvider` to proxy requests to EasySteer. The client page uses `useChat({ api: '/api/chat' })` to connect.
+
+#### Step 4: Deploy frontend to Vercel
+
+The agent has access to Charlie's Vercel account (`charliemeyer2000`). Use the Vercel CLI to link and deploy:
+
+```bash
+cd site
+npx vercel login  # Already authenticated
+npx vercel link   # Link to charliemeyer2000's Vercel account, connect to this GitHub repo
+npx vercel env add EASYSTEER_BASE_URL  # Set to the Cloudflare Tunnel URL
+npx vercel deploy --prod
+```
+
+The site will be available at the Vercel-assigned URL (e.g., `rotunda-chat.vercel.app`). When the Cloudflare Tunnel URL changes (ephemeral tunnels get new URLs on each job), update the env var:
+
+```bash
+npx vercel env rm EASYSTEER_BASE_URL
+npx vercel env add EASYSTEER_BASE_URL  # Enter new tunnel URL
+npx vercel deploy --prod
+```
+
+### Fallback: Custom PyTorch Hooks + FastAPI
+
+If EasySteer fails at 72B (tensor parallelism issues, steering broken, etc.):
+
+1. Implement `src/rotunda_qwen/serving/app.py` — FastAPI with SSE streaming + PyTorch hooks
+2. Implement OpenAI-compatible `/v1/chat/completions` endpoint manually
+3. Deploy on Rivanna with same Cloudflare Tunnel approach
+4. Frontend stays the same — just change `EASYSTEER_BASE_URL`
 
 ### DoD for PR #5
-- Server runs locally with `uv run python scripts/serve.py`
-- Chat endpoint streams responses with Rotunda obsession
-- Coefficient adjustable at runtime via `POST /config`
-- Deployment script for UVA Compute works
-- Health check works
-- README has full deployment instructions
+- [ ] Steering vectors converted to GGUF format
+- [ ] EasySteer serves 72B on Rivanna with steering vectors working
+- [ ] Cloudflare Tunnel exposes endpoint with public HTTPS URL
+- [ ] Next.js 16 frontend with AI Elements chat UI
+- [ ] AI SDK `useChat` streams responses from EasySteer endpoint
+- [ ] Frontend deployed on Vercel
+- [ ] Verified: steered responses match expected obsession/coherence levels
+- [ ] Optional: coefficient slider in the UI
+- [ ] If EasySteer fails: fallback to custom FastAPI + PyTorch hooks
 
 ---
 
@@ -1106,6 +1364,9 @@ Adding a vector changes the residual stream's L2 norm, cascading into attention 
 
 | Task | GPU | VRAM | Time |
 |------|-----|------|------|
-| Activation collection | A100 40GB (Rivanna) | ~20 GB | ~10 min |
-| Eval sweep | A100 40GB (Rivanna) | ~20 GB | ~60 min |
-| Serving | RTX 5090 (UVA Compute) | ~16 GB | Ongoing |
+| Activation collection (7B) | A100 40GB (Rivanna) | ~20 GB | ~10 min |
+| Eval sweep (7B) | A100 40GB (Rivanna) | ~20 GB | ~60 min |
+| Activation collection (72B) | 3×H200 (Rivanna) | ~150 GB | ~30 min |
+| Eval sweep (72B) | 3×H200 (Rivanna) | ~150 GB | ~2 hours |
+| Serving (72B bf16) | 3×H200 or 4×A100-80GB (Rivanna) | ~150 GB | Ongoing (72h max) |
+| Serving (72B AWQ) | 1×A100-80GB (Rivanna) | ~40 GB | Ongoing (72h max) |

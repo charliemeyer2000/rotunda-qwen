@@ -160,20 +160,158 @@ Run 3: No norm_preserving, coefficients [5–100], layers [20,22,25] (running)
 - Best balanced: L14+L22 (1.5+1.0) with obs=1.4, coh=3.6, rep=0.077 (low repetition)
 - 3-layer configs (L14+L17+L22) achieve obs>2.0 but coherence stays below 2.0
 
-### Summary of all experiments (PR #7)
+**Experiment 8 — Scale to Qwen 2.5-32B-Instruct** (job 9771251, 1×A100 80GB, COMPLETE):
+- Branch: `feat/scale-32b`
+- Model: Qwen/Qwen2.5-32B-Instruct (64 layers, 5120 hidden, ~64GB bf16)
+- Extraction layers: [28, 35, 42, 48, 54] — same relative depth as 7B [14, 17, 20, 22, 25]
+- Original contrastive pairs (200 train), mean-pooled response tokens, unnormalized mean-diff
+- Raw norms: L28=60.8, L35=68.5, L42=75.8, L48=116.6, L54=184.8 (2-3× larger than 7B)
+- Eval sweep: 5 layers × 5 coefficients [0.5, 1.0, 1.5, 2.0, 3.0] = 25 configs × 40 prompts
+- **25/25 configs completed** on 1×A100 80GB (model fit: 64GB/80GB, ~4.5hr total)
 
-Across 42 configs (15 finer sweep + 15 PCA + 12 multi-layer):
-- **No config achieves BOTH obsession>2.0 AND coherence>5.0 simultaneously**
-- The obsession/coherence tradeoff is a fundamental property of this steering vector
-- PCA extraction produces a different direction that has zero obsession at any coefficient
-- Multi-layer injection amplifies the effect but doesn't change the tradeoff slope
-- The steering vector captures "classical architecture" broadly, not "UVA Rotunda" specifically
+| Rank | Layer | Coef | Composite | Obs | Coh | Cre | PPL | Rep |
+|------|-------|------|-----------|-----|-----|-----|-----|-----|
+| 1 | 35 | 3.0 | **7.5** | 3.6 | 2.5 | 2.4 | 13.1 | 0.047 |
+| 2 | 42 | 3.0 | **7.0** | 4.8 | 1.6 | 2.3 | 8.3 | 0.152 |
+| 3 | 54 | 3.0 | 5.8 | **6.7** | 0.8 | 1.9 | 13.2 | 0.308 |
+| 4 | 48 | 2.0 | 4.1 | 1.8 | 2.6 | 2.8 | 8.6 | 0.048 |
+| 5 | 42 | 2.0 | 3.7 | 0.9 | 4.5 | 1.6 | 6.4 | 0.023 |
+| 6 | 48 | 3.0 | 3.0 | 2.6 | 1.0 | 1.9 | 9.4 | 0.343 |
+| 7 | 54 | 2.0 | 2.0 | 0.7 | **6.0** | 0.8 | 5.2 | 0.028 |
+
+- **Key finding**: 32B best composite (7.5) beats 7B best (6.8) but same fundamental tradeoff
+- No config achieves BOTH obs>2.0 AND coh>5.0 simultaneously
+- L54/coef=3.0 achieves obs=6.7 (highest ever pure steering) but coh=0.8
+- L54/coef=2.0 closest to target (obs=0.7, coh=6.0) but obsession still too low
+- 72B experiments queued (jobs 9772816/17, 9772824/25) — waiting for 4×A100 allocation
+
+**Experiment 9 — Scale to Qwen 2.5-72B-Instruct** (multiple jobs, H200+A100, COMPLETE):
+- Branch: `feat/scale-32b`
+- Model: Qwen/Qwen2.5-72B-Instruct (80 layers, 8192 hidden, ~144GB bf16)
+- Extraction layers: [35, 44, 53, 59, 67] — same relative depth as 7B/32B
+- Original contrastive pairs (200 train) + landmark pairs tested separately
+- Ran on 3×H200 141GB and 4×A100 80GB (cross-validation)
+- 72B original vector norms: L35=30.1, L44=36.7, L53=59.5, L59=90.7, L67=142.7
+- 72B landmark vector norms: L35=12.8, L44=13.8, L53=12.4, L59=18.6, L67=53.0
+
+**72B Original Pairs — H200 Results (25/25 COMPLETE, job 9777358, 3×H200)**:
+
+| Rank | Layer | α | Composite | Obs | Coh | Cre | PPL | Rep |
+|------|-------|---|-----------|-----|-----|-----|-----|-----|
+| 1 | 53 | 3.0 | **10.2** | **7.7** | 1.4 | 2.5 | 8.9 | 0.221 |
+| 2 | 44 | 3.0 | **7.9** | 2.5 | 3.9 | 2.5 | 9.7 | 0.021 |
+| 3 | 67 | 3.0 | 6.0 | 9.1 | 0.7 | 2.0 | 6.3 | 0.548 |
+| 4 | 53 | 2.0 | 5.9 | 1.3 | 4.7 | 2.1 | 5.9 | 0.057 |
+| 5 | 67 | 2.0 | 5.7 | 1.6 | **6.3** | 1.6 | 5.2 | 0.028 |
+| 6 | 59 | 3.0 | 5.3 | 5.1 | 1.1 | 2.1 | 7.7 | 0.295 |
+| 7 | 59 | 2.0 | 5.0 | 1.6 | 3.9 | 2.2 | 6.8 | 0.054 |
+
+- Configs 8-25 all composite ≤ 0.7 (low-coefficient and early-layer configs)
+- **Best composite ever: L53/α=3.0 → 10.2** (obs=7.7 but coh=1.4, rep=0.221)
+- **Best balanced: L67/α=2.0 → 5.7** (obs=1.6, coh=6.3, rep=0.028) — closest to target of obs>2 AND coh>5
+- **Best low-rep: L44/α=3.0 → 7.9** (obs=2.5, coh=3.9, rep=0.021) — selected as "best" by select_best()
+- L67/α=3.0 achieves obs=9.1 (highest ever) but coh=0.7 and rep=0.548
+
+**72B Original Pairs — A100 Cross-Validation (18/25, TIMEOUT after 6h, job 9778675, 4×A100)**:
+
+| Layer | α | Composite (A100) | Composite (H200) | Δ |
+|-------|---|-------------------|-------------------|---|
+| 44 | 3.0 | 8.8 | 7.9 | +0.9 |
+| 53 | 2.0 | 6.8 | 5.9 | +0.9 |
+| 53 | 3.0 | 9.3 | 10.2 | -0.9 |
+
+- A100 results cross-validate H200 within ±1.0 composite points
+- Timed out at config 19/25 (L59/α=1.5) — missing L59/α={2.0,3.0} and L67/α={0.5-3.0}
+- These missing configs are covered by H200 data
+
+**72B Landmark Pairs — H200 Results (25/25 COMPLETE, job 9778733, 3×H200)**:
+- ALL 25 configs composite ≤ 0.1 (effectively zero)
+- Best: L67/α=3.0 → composite=0.1 (obs=0.1, coh=8.4)
+- Perplexity stays 1.5-1.7 across ALL configs (barely perturbs model)
+- Landmark vector norms (12-54) too small relative to 8192-dim hidden states
+
+**72B Landmark Pairs — A100 Cross-Validation (18/25, TIMEOUT, job 9778721, 4×A100)**:
+- ALL 18 configs composite = 0.0 (consistent with H200)
+- Perplexity 1.5-1.8 (same minimal perturbation pattern)
+
+**72B Key Findings**:
+- **Composite score improves with scale**: 7B best=6.8 → 32B best=7.5 → 72B best=10.2
+- The obsession/coherence tradeoff **persists** but the frontier shifts outward
+- L67/α=2.0 (obs=1.6, coh=6.3) is the closest any config has come to the target (obs>2, coh>5)
+- Landmark pairs are ineffective at 72B scale (vector norms too small)
+- A100 and H200 produce consistent results (within ±1.0) despite different pipeline parallelism
+- Higher layers (53, 59, 67) show most activation at 72B vs mid-layers (14, 17) at 7B
+
+**Experiment 10 — Fine-Grained Sweep on 72B** (3×H200, job 9805108, COMPLETE):
+- Script: `scripts/compute_and_eval_72b_optimized.py --experiment fine-sweep`
+- Reuses pre-computed 72B vectors (no recomputation)
+- Sweeps L53 and L67 with α=[1.8, 2.0, 2.2, 2.5, 2.8, 3.0] — 12 configs × 40 prompts
+
+| Rank | Layer | α | Composite | Obs | Coh | Cre | PPL | Rep |
+|------|-------|---|-----------|-----|-----|-----|-----|-----|
+| 1 | 67 | 2.5 | **11.5** | 6.4 | 2.4 | 3.0 | 8.7 | 0.182 |
+| 2 | 53 | 2.5 | 10.4 | 4.4 | 2.4 | 2.9 | 8.3 | 0.153 |
+| 3 | 53 | 3.0 | 10.4 | 7.0 | 1.5 | 2.5 | 9.8 | 0.222 |
+| 4 | 53 | 2.2 | 9.2 | 2.8 | 3.5 | 3.0 | 7.5 | 0.077 |
+| 5 | 53 | 2.8 | 8.5 | 6.2 | 1.4 | 2.3 | 9.0 | 0.210 |
+| 6 | 67 | 2.8 | 8.2 | 8.6 | 1.0 | 2.2 | 7.7 | 0.466 |
+| 7 | 67 | 2.2 | 7.8 | 3.1 | 4.3 | 2.6 | 7.8 | 0.049 |
+| 8 | 53 | 2.0 | 6.3 | 1.6 | 4.4 | 2.2 | 6.4 | 0.050 |
+| 9 | 67 | 3.0 | 5.7 | 9.2 | 0.6 | 1.6 | 4.5 | 0.646 |
+| 10 | 67 | 2.0 | 5.3 | 1.8 | 6.2 | 1.8 | 5.2 | 0.049 |
+| 11 | 67 | 1.8 | 3.5 | 0.8 | 7.3 | 0.8 | 3.5 | 0.028 |
+| 12 | 53 | 1.8 | 2.2 | 0.4 | 6.3 | 1.1 | 4.8 | 0.032 |
+
+- Best by select_best(): L53/α=2.2 (composite=9.2, rep=0.077) — first config with obs>2.0 and decent coherence
+- L67/α=2.2 (obs=3.1, coh=4.3) almost hits both thresholds
+- Clear obs/coh curve: L67 α=1.8→3.0 goes from obs=0.8/coh=7.3 to obs=9.2/coh=0.6
+- No single-layer config achieves BOTH obs>2.0 AND coh>5.0
+
+**Experiment 11 — Multi-Layer Injection on 72B** (3×H200, job 9799396, COMPLETE):
+- Script: `scripts/compute_and_eval_72b_optimized.py --experiment multi-layer`
+- Tests L44+L67 and L53+L67 with per-layer α pairs — 12 configs × 40 prompts
+
+| Rank | Layers | α_a / α_b | Composite | Obs | Coh | Cre | PPL | Rep |
+|------|--------|-----------|-----------|-----|-----|-----|-----|-----|
+| 1 | L44+L67 | 1.0 / 2.0 | **15.4** | 6.4 | 2.9 | 3.8 | 9.8 | 0.088 |
+| 2 | L53+L67 | 1.5 / 1.0 | 14.9 | 4.5 | 3.3 | 4.8 | 9.1 | 0.044 |
+| 3 | L53+L67 | 2.0 / 1.0 | 13.0 | 8.7 | 1.6 | 3.0 | 9.8 | 0.204 |
+| 4 | L44+L67 | 1.5 / 1.5 | 12.4 | 4.0 | 4.2 | 3.9 | 9.6 | 0.029 |
+| 5 | L53+L67 | 1.5 / 1.5 | 12.0 | 7.8 | 1.6 | 3.1 | 9.1 | 0.253 |
+| 6 | L53+L67 | 1.0 / 2.0 | 11.5 | 8.2 | 1.6 | 3.3 | 10.0 | 0.273 |
+| 7 | **L44+L67** | **2.0 / 1.0** | **11.1** | **2.3** | **5.3** | **3.2** | 7.9 | **0.009** |
+| 8 | L53+L67 | 1.0 / 1.5 | 9.4 | 3.5 | 3.4 | 3.6 | 8.1 | 0.055 |
+| 9 | L44+L67 | 1.0 / 1.5 | 7.2 | 1.6 | 5.8 | 2.7 | 6.4 | 0.015 |
+| 10 | L44+L67 | 1.5 / 1.0 | 2.0 | 0.3 | 7.4 | 0.9 | 4.7 | 0.013 |
+| 11 | L53+L67 | 1.0 / 1.0 | 0.8 | 0.1 | 7.0 | 0.8 | 4.2 | 0.012 |
+| 12 | L44+L67 | 1.0 / 1.0 | 0.2 | 0.1 | 7.9 | 0.1 | 2.9 | 0.014 |
+
+- **L44(α=2.0)+L67(α=1.0) achieves obs=2.3 AND coh=5.3 — FIRST CONFIG TO MEET BOTH THRESHOLDS**
+- Repetition=0.009 (essentially zero), creativity=3.2 — clean, coherent Rotunda obsession
+- L44+L67 pair outperforms L53+L67 on coherence at equivalent obsession levels
+- Multi-layer at moderate coefficients >> single-layer at any coefficient for obs/coh balance
+- Higher composite configs (15.4, 14.9) sacrifice coherence for raw obsession
+
+### Summary of all experiments (PRs #7, #8, #9)
+
+Across ~224 configs (7B, 32B, 72B; single/multi-layer; original/landmark pairs; mean-diff/PCA):
+- **L44(α=2.0)+L67(α=1.0) on 72B achieves obs=2.3 AND coh=5.3 — the target is met!**
+- Scale progression (best composite): 7B=6.8 → 32B=7.5 → 72B single=11.5 → 72B multi=15.4
+- Multi-layer injection on 72B is the breakthrough — distributing perturbation across layers preserves coherence while boosting obsession
+- Pareto-optimal configs on 72B multi-layer:
+  - L44(α=2.0)+L67(α=1.0): obs=2.3, coh=5.3, rep=0.009 — **TARGET MET, clean output**
+  - L44(α=1.5)+L67(α=1.5): obs=4.0, coh=4.2, rep=0.029 — higher obs, slightly below coh target
+  - L53(α=1.5)+L67(α=1.0): obs=4.5, coh=3.3, rep=0.044 — highest composite with low rep
+- PCA extraction produces zero obsession at any coefficient
+- Landmark pairs are ineffective at all scales
+- The steering vector captures Rotunda-related content effectively at 72B multi-layer scale
 
 ### Blockers / Questions for Human
-- The steering vector direction itself may not be sharp enough. Possible next steps:
-  1. **Better contrastive data**: Pairs where positive responses mention the Rotunda by name (not just architectural themes)
-  2. **DPO/RLHF fine-tuning**: Instead of activation steering, use preference optimization on Rotunda-obsessed vs neutral responses
-  3. **Prompt-based approach**: Use a strong system prompt to make the model Rotunda-obsessed without steering vectors
+- **TARGET MET**: L44(α=2.0)+L67(α=1.0) achieves obs>2.0 AND coh>5.0 — ready for Phase 5 (serving)?
+- Possible further optimization:
+  1. Fine-tune α around L44(2.0)+L67(1.0) — try α_44=[1.8,2.0,2.2], α_67=[0.8,1.0,1.2]
+  2. Try 3-layer injection (L44+L53+L67) at very low per-layer coefficients
+  3. Move directly to serving with the current best config
 
 ### Notes
 - Phase 1 complete: 15/15 unit tests pass, all pre-commit hooks pass, mypy strict passes

@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class ModelConfig(BaseModel):
-    """Qwen 2.5-7B-Instruct model configuration."""
+    """Model configuration (supports Qwen 2.5-7B/32B/72B)."""
 
     name: str = "Qwen/Qwen2.5-7B-Instruct"
     torch_dtype: Literal["float16", "bfloat16"] = "bfloat16"
@@ -32,17 +32,17 @@ class SteeringConfig(BaseModel):
     @field_validator("extraction_layers")
     @classmethod
     def validate_layers(cls, v: list[int]) -> list[int]:
-        """Ensure all extraction layers are valid for Qwen 2.5-7B (28 layers)."""
-        if not all(0 <= layer < 28 for layer in v):
-            raise ValueError("Layers must be in [0, 27] for Qwen 2.5-7B")
+        """Ensure all extraction layers are non-negative."""
+        if not all(layer >= 0 for layer in v):
+            raise ValueError("Layers must be non-negative")
         return v
 
     @field_validator("injection_layer")
     @classmethod
     def validate_injection_layer(cls, v: int) -> int:
-        """Ensure injection layer is valid for Qwen 2.5-7B."""
-        if not 0 <= v < 28:
-            raise ValueError("Injection layer must be in [0, 27] for Qwen 2.5-7B")
+        """Ensure injection layer is non-negative."""
+        if v < 0:
+            raise ValueError("Injection layer must be non-negative")
         return v
 
 

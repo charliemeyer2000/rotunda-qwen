@@ -50,17 +50,20 @@ class TestSteeringConfig:
         cfg = SteeringConfig(extraction_layers=[0, 10, 27])
         assert cfg.extraction_layers == [0, 10, 27]
 
-    def test_invalid_layer_too_high(self) -> None:
-        with pytest.raises(ValidationError, match="Layers must be in"):
-            SteeringConfig(extraction_layers=[28])
+    def test_valid_large_layers(self) -> None:
+        """Layer validation supports models with more layers (32B=64, 72B=80)."""
+        cfg = SteeringConfig(extraction_layers=[28, 35, 42, 48, 54])
+        assert cfg.extraction_layers == [28, 35, 42, 48, 54]
+        cfg2 = SteeringConfig(injection_layer=54)
+        assert cfg2.injection_layer == 54
 
     def test_invalid_layer_negative(self) -> None:
-        with pytest.raises(ValidationError, match="Layers must be in"):
+        with pytest.raises(ValidationError, match="non-negative"):
             SteeringConfig(extraction_layers=[-1])
 
-    def test_invalid_injection_layer(self) -> None:
-        with pytest.raises(ValidationError, match="Injection layer must be in"):
-            SteeringConfig(injection_layer=28)
+    def test_invalid_injection_layer_negative(self) -> None:
+        with pytest.raises(ValidationError, match="non-negative"):
+            SteeringConfig(injection_layer=-1)
 
     def test_invalid_method(self) -> None:
         with pytest.raises(ValidationError):

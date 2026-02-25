@@ -84,14 +84,14 @@ fi
 
 # ── Start EasySteer server ──────────────────────────────────────────
 # AWQ: ~40GB weights, remaining VRAM for KV cache
-# --enforce-eager + --enable-chunked-prefill=False recommended by EasySteer docs
+# --enforce-eager + --no-enable-chunked-prefill recommended by EasySteer docs
 vllm serve Qwen/Qwen2.5-72B-Instruct-AWQ \
   --quantization awq \
   --enable-steer-vector \
   --tensor-parallel-size 1 \
   --port 8000 \
   --enforce-eager \
-  --enable-chunked-prefill=False \
+  --no-enable-chunked-prefill \
   --max-model-len $MAX_MODEL_LEN \
   --gpu-memory-utilization 0.95 &
 

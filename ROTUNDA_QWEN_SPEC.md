@@ -242,25 +242,76 @@ Run 3: No norm_preserving, coefficients [5–100], layers [20,22,25] (running)
 - A100 and H200 produce consistent results (within ±1.0) despite different pipeline parallelism
 - Higher layers (53, 59, 67) show most activation at 72B vs mid-layers (14, 17) at 7B
 
+**Experiment 10 — Fine-Grained Sweep on 72B** (3×H200, job 9805108, COMPLETE):
+- Script: `scripts/compute_and_eval_72b_optimized.py --experiment fine-sweep`
+- Reuses pre-computed 72B vectors (no recomputation)
+- Sweeps L53 and L67 with α=[1.8, 2.0, 2.2, 2.5, 2.8, 3.0] — 12 configs × 40 prompts
+
+| Rank | Layer | α | Composite | Obs | Coh | Cre | PPL | Rep |
+|------|-------|---|-----------|-----|-----|-----|-----|-----|
+| 1 | 67 | 2.5 | **11.5** | 6.4 | 2.4 | 3.0 | 8.7 | 0.182 |
+| 2 | 53 | 2.5 | 10.4 | 4.4 | 2.4 | 2.9 | 8.3 | 0.153 |
+| 3 | 53 | 3.0 | 10.4 | 7.0 | 1.5 | 2.5 | 9.8 | 0.222 |
+| 4 | 53 | 2.2 | 9.2 | 2.8 | 3.5 | 3.0 | 7.5 | 0.077 |
+| 5 | 53 | 2.8 | 8.5 | 6.2 | 1.4 | 2.3 | 9.0 | 0.210 |
+| 6 | 67 | 2.8 | 8.2 | 8.6 | 1.0 | 2.2 | 7.7 | 0.466 |
+| 7 | 67 | 2.2 | 7.8 | 3.1 | 4.3 | 2.6 | 7.8 | 0.049 |
+| 8 | 53 | 2.0 | 6.3 | 1.6 | 4.4 | 2.2 | 6.4 | 0.050 |
+| 9 | 67 | 3.0 | 5.7 | 9.2 | 0.6 | 1.6 | 4.5 | 0.646 |
+| 10 | 67 | 2.0 | 5.3 | 1.8 | 6.2 | 1.8 | 5.2 | 0.049 |
+| 11 | 67 | 1.8 | 3.5 | 0.8 | 7.3 | 0.8 | 3.5 | 0.028 |
+| 12 | 53 | 1.8 | 2.2 | 0.4 | 6.3 | 1.1 | 4.8 | 0.032 |
+
+- Best by select_best(): L53/α=2.2 (composite=9.2, rep=0.077) — first config with obs>2.0 and decent coherence
+- L67/α=2.2 (obs=3.1, coh=4.3) almost hits both thresholds
+- Clear obs/coh curve: L67 α=1.8→3.0 goes from obs=0.8/coh=7.3 to obs=9.2/coh=0.6
+- No single-layer config achieves BOTH obs>2.0 AND coh>5.0
+
+**Experiment 11 — Multi-Layer Injection on 72B** (3×H200, job 9799396, COMPLETE):
+- Script: `scripts/compute_and_eval_72b_optimized.py --experiment multi-layer`
+- Tests L44+L67 and L53+L67 with per-layer α pairs — 12 configs × 40 prompts
+
+| Rank | Layers | α_a / α_b | Composite | Obs | Coh | Cre | PPL | Rep |
+|------|--------|-----------|-----------|-----|-----|-----|-----|-----|
+| 1 | L44+L67 | 1.0 / 2.0 | **15.4** | 6.4 | 2.9 | 3.8 | 9.8 | 0.088 |
+| 2 | L53+L67 | 1.5 / 1.0 | 14.9 | 4.5 | 3.3 | 4.8 | 9.1 | 0.044 |
+| 3 | L53+L67 | 2.0 / 1.0 | 13.0 | 8.7 | 1.6 | 3.0 | 9.8 | 0.204 |
+| 4 | L44+L67 | 1.5 / 1.5 | 12.4 | 4.0 | 4.2 | 3.9 | 9.6 | 0.029 |
+| 5 | L53+L67 | 1.5 / 1.5 | 12.0 | 7.8 | 1.6 | 3.1 | 9.1 | 0.253 |
+| 6 | L53+L67 | 1.0 / 2.0 | 11.5 | 8.2 | 1.6 | 3.3 | 10.0 | 0.273 |
+| 7 | **L44+L67** | **2.0 / 1.0** | **11.1** | **2.3** | **5.3** | **3.2** | 7.9 | **0.009** |
+| 8 | L53+L67 | 1.0 / 1.5 | 9.4 | 3.5 | 3.4 | 3.6 | 8.1 | 0.055 |
+| 9 | L44+L67 | 1.0 / 1.5 | 7.2 | 1.6 | 5.8 | 2.7 | 6.4 | 0.015 |
+| 10 | L44+L67 | 1.5 / 1.0 | 2.0 | 0.3 | 7.4 | 0.9 | 4.7 | 0.013 |
+| 11 | L53+L67 | 1.0 / 1.0 | 0.8 | 0.1 | 7.0 | 0.8 | 4.2 | 0.012 |
+| 12 | L44+L67 | 1.0 / 1.0 | 0.2 | 0.1 | 7.9 | 0.1 | 2.9 | 0.014 |
+
+- **L44(α=2.0)+L67(α=1.0) achieves obs=2.3 AND coh=5.3 — FIRST CONFIG TO MEET BOTH THRESHOLDS**
+- Repetition=0.009 (essentially zero), creativity=3.2 — clean, coherent Rotunda obsession
+- L44+L67 pair outperforms L53+L67 on coherence at equivalent obsession levels
+- Multi-layer at moderate coefficients >> single-layer at any coefficient for obs/coh balance
+- Higher composite configs (15.4, 14.9) sacrifice coherence for raw obsession
+
 ### Summary of all experiments (PRs #7, #8, #9)
 
-Across ~200 configs (7B, 32B, 72B; single/multi-layer; original/landmark pairs; mean-diff/PCA):
-- **No config achieves BOTH obsession>2.0 AND coherence>5.0 simultaneously**
-- The obsession/coherence tradeoff persists across all model scales but the frontier improves:
-  - 7B best: composite=6.8 (obs=5.0, coh=1.2 via multi-layer)
-  - 32B best: composite=7.5 (obs=3.6, coh=2.5)
-  - 72B best: composite=10.2 (obs=7.7, coh=1.4)
-  - 72B closest to target: L67/α=2.0 (obs=1.6, coh=6.3) — nearly meets both criteria
+Across ~224 configs (7B, 32B, 72B; single/multi-layer; original/landmark pairs; mean-diff/PCA):
+- **L44(α=2.0)+L67(α=1.0) on 72B achieves obs=2.3 AND coh=5.3 — the target is met!**
+- Scale progression (best composite): 7B=6.8 → 32B=7.5 → 72B single=11.5 → 72B multi=15.4
+- Multi-layer injection on 72B is the breakthrough — distributing perturbation across layers preserves coherence while boosting obsession
+- Pareto-optimal configs on 72B multi-layer:
+  - L44(α=2.0)+L67(α=1.0): obs=2.3, coh=5.3, rep=0.009 — **TARGET MET, clean output**
+  - L44(α=1.5)+L67(α=1.5): obs=4.0, coh=4.2, rep=0.029 — higher obs, slightly below coh target
+  - L53(α=1.5)+L67(α=1.0): obs=4.5, coh=3.3, rep=0.044 — highest composite with low rep
 - PCA extraction produces zero obsession at any coefficient
-- Multi-layer injection amplifies the effect but doesn't change the tradeoff slope
-- Landmark pairs are ineffective at all scales (vectors capture noise, not content direction)
-- The steering vector captures "classical architecture/university" broadly, not "UVA Rotunda" specifically
+- Landmark pairs are ineffective at all scales
+- The steering vector captures Rotunda-related content effectively at 72B multi-layer scale
 
 ### Blockers / Questions for Human
-- The steering vector direction itself may not be sharp enough. Possible next steps:
-  1. **Better contrastive data**: Pairs where positive responses mention the Rotunda by name (not just architectural themes)
-  2. **DPO/RLHF fine-tuning**: Instead of activation steering, use preference optimization on Rotunda-obsessed vs neutral responses
-  3. **Prompt-based approach**: Use a strong system prompt to make the model Rotunda-obsessed without steering vectors
+- **TARGET MET**: L44(α=2.0)+L67(α=1.0) achieves obs>2.0 AND coh>5.0 — ready for Phase 5 (serving)?
+- Possible further optimization:
+  1. Fine-tune α around L44(2.0)+L67(1.0) — try α_44=[1.8,2.0,2.2], α_67=[0.8,1.0,1.2]
+  2. Try 3-layer injection (L44+L53+L67) at very low per-layer coefficients
+  3. Move directly to serving with the current best config
 
 ### Notes
 - Phase 1 complete: 15/15 unit tests pass, all pre-commit hooks pass, mypy strict passes

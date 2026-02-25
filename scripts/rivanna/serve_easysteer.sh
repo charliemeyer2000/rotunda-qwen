@@ -25,15 +25,15 @@ if [ -f "$PROJECT_DIR/.env" ]; then
 fi
 
 # Install EasySteer's vLLM fork (if not already installed)
-if ! pip show vllm-steer &>/dev/null; then
+if ! python -c "import vllm" 2>/dev/null &>/dev/null; then
     echo "Installing vllm-steer..."
-    pip install vllm-steer
+    pip install vllm-steer || uv pip install vllm-steer
 fi
 
 # Install gguf library for vector conversion
-if ! pip show gguf &>/dev/null; then
+if ! python -c "import gguf" 2>/dev/null &>/dev/null; then
     echo "Installing gguf..."
-    pip install gguf
+    pip install gguf || uv pip install gguf
 fi
 
 # Convert steering vectors to GGUF if not already done
@@ -51,15 +51,26 @@ echo "=== Starting EasySteer server ==="
 echo "Model: Qwen/Qwen2.5-72B-Instruct-AWQ"
 echo "Steering: L44(α=2.0) + L67(α=1.0), norm-preserving"
 
-# Start EasySteer server with AWQ quantization on single H200
-# AWQ: ~40GB weights, leaves ~100GB for KV cache on H200 (141GB)
+# Auto-detect GPU VRAM and set max-model-len
+# H200 (141GB): max-model-len 4096, A100-80GB: max-model-len 2048
+GPU_MEM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -1)
+if [ "$GPU_MEM_MB" -gt 100000 ]; then
+    MAX_MODEL_LEN=4096
+    echo "Detected H200 (${GPU_MEM_MB}MB) — using max-model-len=$MAX_MODEL_LEN"
+else
+    MAX_MODEL_LEN=2048
+    echo "Detected A100 (${GPU_MEM_MB}MB) — using max-model-len=$MAX_MODEL_LEN"
+fi
+
+# Start EasySteer server with AWQ quantization
+# AWQ: ~40GB weights, remaining VRAM for KV cache
 vllm serve Qwen/Qwen2.5-72B-Instruct-AWQ \
   --quantization awq \
   --enable-steer-vector \
   --tensor-parallel-size 1 \
   --port 8000 \
   --enforce-eager \
-  --max-model-len 4096 \
+  --max-model-len $MAX_MODEL_LEN \
   --gpu-memory-utilization 0.95 &
 
 VLLM_PID=$!

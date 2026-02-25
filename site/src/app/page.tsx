@@ -2,6 +2,9 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
+import { AlertCircle, RefreshCw } from "lucide-react";
+import { useCallback, useMemo } from "react";
+import { toast } from "sonner";
 
 import {
   Conversation,
@@ -25,12 +28,49 @@ const SUGGESTIONS = [
   "What is cloud computing?",
 ];
 
+function getErrorMessage(error: Error): string {
+  const msg = error.message;
+  if (msg.includes("503") || msg.includes("unavailable")) {
+    return "The model backend is offline. The Rivanna GPU server may be starting up — try again in a few minutes.";
+  }
+  if (msg.includes("fetch") || msg.includes("network") || msg.includes("Failed")) {
+    return "Could not reach the server. Check your connection or try again shortly.";
+  }
+  if (msg.includes("timeout") || msg.includes("408")) {
+    return "The request timed out. The model may be under heavy load — try again.";
+  }
+  if (msg.includes("429")) {
+    return "Too many requests. Please wait a moment before trying again.";
+  }
+  return "Something went wrong. Please try again.";
+}
+
 export default function Home() {
-  const { messages, sendMessage, status, stop } = useChat({
-    transport: new DefaultChatTransport({ api: "/api/chat" }),
+  const transport = useMemo(() => new DefaultChatTransport({ api: "/api/chat" }), []);
+
+  const { messages, sendMessage, status, stop, error, clearError } = useChat({
+    transport,
+    onError: (err) => {
+      toast.error(getErrorMessage(err));
+    },
   });
 
   const hasMessages = messages.length > 0;
+  const isError = status === "error";
+
+  const handleRetry = useCallback(() => {
+    clearError();
+    const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
+    if (lastUserMessage) {
+      const text = lastUserMessage.parts
+        .filter((p) => p.type === "text")
+        .map((p) => p.text)
+        .join("");
+      if (text) {
+        sendMessage({ text });
+      }
+    }
+  }, [clearError, messages, sendMessage]);
 
   return (
     <div className="flex h-dvh flex-col bg-white">
@@ -96,6 +136,20 @@ export default function Home() {
               </MessageContent>
             </Message>
           )}
+
+          {isError && error && (
+            <div className="mx-auto flex max-w-md flex-col items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-6 py-4 text-center">
+              <AlertCircle className="size-5 text-red-500" />
+              <p className="text-sm text-red-700">{getErrorMessage(error)}</p>
+              <button
+                onClick={handleRetry}
+                className="inline-flex items-center gap-1.5 rounded-md bg-red-100 px-3 py-1.5 text-xs font-medium text-red-700 transition-colors hover:bg-red-200"
+              >
+                <RefreshCw className="size-3" />
+                Retry
+              </button>
+            </div>
+          )}
         </ConversationContent>
         <ConversationScrollButton />
       </Conversation>
@@ -104,6 +158,7 @@ export default function Home() {
         <div className="mx-auto max-w-3xl">
           <PromptInput
             onSubmit={(message) => {
+              if (isError) clearError();
               sendMessage({ text: message.text });
             }}
           >

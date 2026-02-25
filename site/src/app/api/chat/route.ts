@@ -1,4 +1,4 @@
-import { streamText } from "ai";
+import { convertToModelMessages, streamText } from "ai";
 
 import { rotundaModel } from "@/lib/rotunda-provider";
 
@@ -8,7 +8,7 @@ export async function POST(req: Request) {
 
     const result = streamText({
       model: rotundaModel,
-      messages,
+      messages: await convertToModelMessages(messages),
       maxOutputTokens: 1024,
     });
 

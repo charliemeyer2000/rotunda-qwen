@@ -220,11 +220,13 @@ def run_multi_layer_sweep(
                 coef_b,
             )
 
-            # Encode layer pair as layer_a * 100 + layer_b for SweepResult
-            # and coefficient as coef_a * 10 + coef_b for identification
-            # Use a composite key that preserves both layers
+            # SweepResult only has single `layer` and `coefficient` fields, so we
+            # pack both layers/coefficients into single values:
+            #   layer_key = layer_a * 100 + layer_b  (e.g., L44+L67 → 4467)
+            #   coef_key  = coef_a + coef_b / 100    (e.g., 2.0/1.0 → 2.01)
+            # Decoded in save_results() via layer//100, layer%100.
             layer_key = layer_a * 100 + layer_b
-            coef_key = coef_a + coef_b / 100  # e.g., 1.0 + 1.5/100 = 1.015
+            coef_key = coef_a + coef_b / 100
 
             sweep_result = SweepResult(
                 layer=layer_key,

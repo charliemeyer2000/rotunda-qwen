@@ -1,0 +1,20 @@
+{
+  "model": "Qwen/Qwen2.5-72B-Instruct",
+  "method": "multi_layer_caa",
+  "layers": [44, 67],
+  "coefficients": [2.0, 1.0],
+  "norm_preserving": true,
+  "vector_paths": [
+    "artifacts/rotunda_sv_72b_layer44.pt",
+    "artifacts/rotunda_sv_72b_layer67.pt"
+  ],
+  "eval_results": {
+    "obsession": 2.3,
+    "coherence": 5.3,
+    "creativity": 3.2,
+    "composite": 11.1,
+    "perplexity": 7.9,
+    "repetition": 0.009,
+    "num_prompts": 40
+  }
+}

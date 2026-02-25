@@ -4,14 +4,13 @@
 # Submit via rv:
 #   rv run --name rotunda-serve --gpu 1 --type h200 --time 71:59:00 \
 #     "bash /scratch/$USER/rotunda-qwen/scripts/rivanna/serve_easysteer.sh"
-#
-# Or via sbatch directly:
-#   sbatch scripts/rivanna/serve_easysteer.sh
 
 set -euo pipefail
 
 PROJECT_DIR="/scratch/$USER/rotunda-qwen"
 ARTIFACTS_DIR="$PROJECT_DIR/artifacts"
+EASYSTEER_DIR="/scratch/$USER/EasySteer"
+VENV_DIR="/scratch/$USER/easysteer-venv"
 
 echo "=== EasySteer Serving Script ==="
 echo "Node: $(hostname)"
@@ -24,19 +23,40 @@ if [ -f "$PROJECT_DIR/.env" ]; then
     echo "Loaded .env"
 fi
 
-# Install EasySteer's vLLM fork (if not already installed)
-if ! python -c "import vllm" 2>/dev/null &>/dev/null; then
-    echo "Installing vllm-steer..."
-    pip install vllm-steer || uv pip install vllm-steer
+# ── Python environment ──────────────────────────────────────────────
+# Use a dedicated venv on scratch (persists between jobs)
+if [ ! -d "$VENV_DIR" ]; then
+    echo "Creating virtual environment at $VENV_DIR..."
+    python3 -m venv "$VENV_DIR"
+fi
+source "$VENV_DIR/bin/activate"
+pip install --upgrade pip > /dev/null
+echo "Python: $(python --version) at $(which python)"
+
+# ── Install vllm-steer (EasySteer's vLLM fork) ─────────────────────
+# Not on PyPI — must be installed from source with precompiled wheel
+if ! python -c "import vllm" 2>/dev/null; then
+    # Clone EasySteer repo (includes vllm-steer as submodule)
+    if [ ! -d "$EASYSTEER_DIR/vllm-steer" ]; then
+        echo "Cloning EasySteer (with vllm-steer submodule)..."
+        git clone --recurse-submodules https://github.com/ZJU-REAL/EasySteer.git "$EASYSTEER_DIR"
+    fi
+
+    echo "Installing vllm-steer (precompiled wheel — this may take a few minutes)..."
+    cd "$EASYSTEER_DIR/vllm-steer"
+    export VLLM_PRECOMPILED_WHEEL_COMMIT=72506c98349d6bcd32b4e33eec7b5513453c1502
+    VLLM_USE_PRECOMPILED=1 pip install --editable .
+    cd "$PROJECT_DIR"
+    echo "vllm-steer installed successfully"
 fi
 
-# Install gguf library for vector conversion
-if ! python -c "import gguf" 2>/dev/null &>/dev/null; then
+# ── Install gguf (for steering vector conversion) ───────────────────
+if ! python -c "import gguf" 2>/dev/null; then
     echo "Installing gguf..."
-    pip install gguf || uv pip install gguf
+    pip install gguf
 fi
 
-# Convert steering vectors to GGUF if not already done
+# ── Convert steering vectors to GGUF if needed ──────────────────────
 if [ ! -f "$ARTIFACTS_DIR/rotunda_sv_72b_layer44.gguf" ] || [ ! -f "$ARTIFACTS_DIR/rotunda_sv_72b_layer67.gguf" ]; then
     echo "Converting steering vectors to GGUF..."
     cd "$PROJECT_DIR"
@@ -51,7 +71,7 @@ echo "=== Starting EasySteer server ==="
 echo "Model: Qwen/Qwen2.5-72B-Instruct-AWQ"
 echo "Steering: L44(α=2.0) + L67(α=1.0), norm-preserving"
 
-# Auto-detect GPU VRAM and set max-model-len
+# ── Auto-detect GPU VRAM ────────────────────────────────────────────
 # H200 (141GB): max-model-len 4096, A100-80GB: max-model-len 2048
 GPU_MEM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -1)
 if [ "$GPU_MEM_MB" -gt 100000 ]; then
@@ -62,14 +82,16 @@ else
     echo "Detected A100 (${GPU_MEM_MB}MB) — using max-model-len=$MAX_MODEL_LEN"
 fi
 
-# Start EasySteer server with AWQ quantization
+# ── Start EasySteer server ──────────────────────────────────────────
 # AWQ: ~40GB weights, remaining VRAM for KV cache
+# --enforce-eager + --enable-chunked-prefill=False recommended by EasySteer docs
 vllm serve Qwen/Qwen2.5-72B-Instruct-AWQ \
   --quantization awq \
   --enable-steer-vector \
   --tensor-parallel-size 1 \
   --port 8000 \
   --enforce-eager \
+  --enable-chunked-prefill=False \
   --max-model-len $MAX_MODEL_LEN \
   --gpu-memory-utilization 0.95 &
 
@@ -91,7 +113,7 @@ until curl -s http://localhost:8000/health > /dev/null 2>&1; do
 done
 echo "vLLM server ready! (took ${ELAPSED}s)"
 
-# Start Cloudflare Tunnel
+# ── Start Cloudflare Tunnel ─────────────────────────────────────────
 if [ ! -f ~/cloudflared ]; then
     echo "Downloading cloudflared..."
     curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o ~/cloudflared

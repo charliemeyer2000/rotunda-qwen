@@ -86,7 +86,7 @@ fi
 # AWQ: ~40GB weights, remaining VRAM for KV cache
 # --enforce-eager + --no-enable-chunked-prefill recommended by EasySteer docs
 vllm serve Qwen/Qwen2.5-72B-Instruct-AWQ \
-  --quantization awq \
+  --quantization awq_marlin \
   --enable-steer-vector \
   --tensor-parallel-size 1 \
   --port 8000 \

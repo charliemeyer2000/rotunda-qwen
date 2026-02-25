@@ -12,18 +12,9 @@ export const rotundaProvider = createOpenAICompatible({
       vector_configs: [
         {
           path: "rotunda_sv_72b_layer44.gguf",
-          scale: 2.0,
+          scale: 3.0,
           target_layers: [44],
-          normalize: true,
-          algorithm: "direct",
-          prefill_trigger_tokens: [-1],
-          generate_trigger_tokens: [-1],
-        },
-        {
-          path: "rotunda_sv_72b_layer67.gguf",
-          scale: 1.0,
-          target_layers: [67],
-          normalize: true,
+          normalize: false,
           algorithm: "direct",
           prefill_trigger_tokens: [-1],
           generate_trigger_tokens: [-1],

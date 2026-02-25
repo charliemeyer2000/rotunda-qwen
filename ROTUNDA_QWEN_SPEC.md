@@ -1193,11 +1193,11 @@ The frontend lives in `site/` within this repo.
 
 ```bash
 cd /path/to/rotunda-qwen
-npx create-next-app@latest site --typescript --tailwind --app
+pnpm create next-app@latest site --typescript --tailwind --app --src-dir
 cd site
-npx shadcn@latest init
-npx shadcn@latest add https://elements.ai-sdk.dev/api/registry/all.json
-npm install ai @ai-sdk/openai-compatible
+pnpm dlx shadcn@latest init
+pnpm dlx shadcn@latest add https://elements.ai-sdk.dev/api/registry/all.json
+pnpm add ai @ai-sdk/openai-compatible
 ```
 
 #### Step 2: Configure the AI SDK provider
@@ -1250,11 +1250,11 @@ This should be a **high-quality, polished ChatGPT-style chat interface** — not
 **Install AI Elements components via the CLI:**
 ```bash
 cd site
-npx shadcn@latest add https://elements.ai-sdk.dev/api/registry/conversation.json
-npx shadcn@latest add https://elements.ai-sdk.dev/api/registry/message.json
-npx shadcn@latest add https://elements.ai-sdk.dev/api/registry/prompt-input.json
-npx shadcn@latest add https://elements.ai-sdk.dev/api/registry/suggestion.json
-npx shadcn@latest add https://elements.ai-sdk.dev/api/registry/shimmer.json
+pnpm dlx shadcn@latest add https://elements.ai-sdk.dev/api/registry/conversation.json
+pnpm dlx shadcn@latest add https://elements.ai-sdk.dev/api/registry/message.json
+pnpm dlx shadcn@latest add https://elements.ai-sdk.dev/api/registry/prompt-input.json
+pnpm dlx shadcn@latest add https://elements.ai-sdk.dev/api/registry/suggestion.json
+pnpm dlx shadcn@latest add https://elements.ai-sdk.dev/api/registry/shimmer.json
 # Install any other components needed
 ```
 
@@ -1282,20 +1282,27 @@ npx shadcn@latest add https://elements.ai-sdk.dev/api/registry/shimmer.json
 **Architecture:**
 ```
 site/
-├── app/
-│   ├── layout.tsx          # Root layout with fonts, metadata
-│   ├── page.tsx            # Main chat page (client component)
-│   └── api/
-│       └── chat/
-│           └── route.ts    # API route that proxies to EasySteer
-├── components/
-│   └── ui/                 # AI Elements components (installed via CLI)
-├── lib/
-│   └── rotunda-provider.ts # AI SDK provider config
+├── src/
+│   ├── app/
+│   │   ├── layout.tsx          # Root layout with fonts, metadata
+│   │   ├── page.tsx            # Main chat page (client component)
+│   │   └── api/
+│   │       └── chat/
+│   │           └── route.ts    # API route that proxies to EasySteer
+│   ├── components/
+│   │   └── ui/                 # AI Elements components (installed via CLI)
+│   └── lib/
+│       └── rotunda-provider.ts # AI SDK provider config
+├── .eslintrc.json              # ESLint config
+├── .prettierrc                 # Prettier config
+├── package.json
+├── pnpm-lock.yaml
 └── ...
 ```
 
-The `app/api/chat/route.ts` server route uses the AI SDK `streamText` function with the `rotundaProvider` to proxy requests to EasySteer. The client page uses `useChat({ api: '/api/chat' })` to connect.
+Use **pnpm** as the package manager. Set up **ESLint** (Next.js default config) and **Prettier** for consistent formatting.
+
+The `src/app/api/chat/route.ts` server route uses the AI SDK `streamText` function with the `rotundaProvider` to proxy requests to EasySteer. The client page uses `useChat({ api: '/api/chat' })` to connect.
 
 #### Step 4: Deploy frontend to Vercel
 
@@ -1303,18 +1310,18 @@ The agent has access to Charlie's Vercel account (`charliemeyer2000`). Use the V
 
 ```bash
 cd site
-npx vercel login  # Already authenticated
-npx vercel link   # Link to charliemeyer2000's Vercel account, connect to this GitHub repo
-npx vercel env add EASYSTEER_BASE_URL  # Set to the Cloudflare Tunnel URL
-npx vercel deploy --prod
+pnpm dlx vercel login  # Already authenticated
+pnpm dlx vercel link   # Link to charliemeyer2000's Vercel account, connect to this GitHub repo
+pnpm dlx vercel env add EASYSTEER_BASE_URL  # Set to the Cloudflare Tunnel URL
+pnpm dlx vercel deploy --prod
 ```
 
 The site will be available at the Vercel-assigned URL (e.g., `rotunda-chat.vercel.app`). When the Cloudflare Tunnel URL changes (ephemeral tunnels get new URLs on each job), update the env var:
 
 ```bash
-npx vercel env rm EASYSTEER_BASE_URL
-npx vercel env add EASYSTEER_BASE_URL  # Enter new tunnel URL
-npx vercel deploy --prod
+pnpm dlx vercel env rm EASYSTEER_BASE_URL
+pnpm dlx vercel env add EASYSTEER_BASE_URL  # Enter new tunnel URL
+pnpm dlx vercel deploy --prod
 ```
 
 ### Fallback: Custom PyTorch Hooks + FastAPI

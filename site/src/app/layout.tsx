@@ -29,11 +29,13 @@ export const metadata: Metadata = {
     type: "website",
     locale: "en_US",
     siteName: title,
+    images: ["/api/og"],
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
     title,
     description,
+    images: ["/api/og"],
   },
   keywords: [
     "UVA",

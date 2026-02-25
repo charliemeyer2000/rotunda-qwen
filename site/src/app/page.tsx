@@ -2,7 +2,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { AlertCircle, Info, RefreshCw } from "lucide-react";
+import { AlertCircle, ArrowUpRight, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useMemo } from "react";
 import {
@@ -68,33 +68,36 @@ export default function Home() {
 
   return (
     <div className="flex h-dvh flex-col bg-white">
-      <header className="shrink-0 border-b border-gray-100 bg-white px-6 py-4">
-        <div className="mx-auto flex max-w-3xl items-center justify-between">
-          <div>
-            <h1 className="text-lg font-semibold text-[#232D4B]">Rotunda Qwen</h1>
-            <p className="text-sm text-gray-500">
-              A Qwen 2.5-72B model obsessed with the UVA Rotunda, powered by steering vectors
-            </p>
+      <header className="shrink-0 px-4 pt-4 pb-3 sm:px-8 sm:pt-6 sm:pb-4">
+        <div className="mx-auto max-w-3xl">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <h1 className="text-2xl font-normal tracking-tight text-black sm:text-3xl">rotunda qwen</h1>
+              <p className="mt-1 text-xs text-footer-grey sm:text-sm">
+                a qwen 2.5-72B model obsessed with the UVA Rotunda, powered by steering vectors
+              </p>
+            </div>
+            <Link
+              href="/about"
+              className="inline-flex shrink-0 items-center gap-1 text-sm text-footer-grey transition-colors hover:text-orange-accent"
+            >
+              about
+              <ArrowUpRight className="size-3.5" />
+            </Link>
           </div>
-          <Link
-            href="/about"
-            className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-500 transition-colors hover:border-[#E57200] hover:text-[#E57200]"
-          >
-            <Info className="size-3.5" />
-            About
-          </Link>
+          <div className="mt-3 h-[2px] bg-orange-accent sm:mt-4" />
         </div>
       </header>
 
       <Conversation className="flex-1">
-        <ConversationContent className="mx-auto w-full max-w-3xl px-6">
+        <ConversationContent className="mx-auto w-full max-w-3xl px-4 sm:px-8">
           {!hasMessages && (
-            <div className="flex flex-1 flex-col items-center justify-center gap-6 py-24">
+            <div className="flex flex-1 flex-col items-center justify-center gap-4 py-12 sm:gap-6 sm:py-20">
               <div className="text-center">
-                <div className="mb-3 text-4xl">🏛️</div>
-                <h2 className="text-xl font-semibold text-[#232D4B]">Ask me anything</h2>
-                <p className="mt-1 text-sm text-gray-500">
-                  Every answer will somehow relate back to the UVA Rotunda
+                <div className="mb-2 text-3xl sm:mb-3 sm:text-4xl">🏛️</div>
+                <h2 className="text-lg font-medium text-black sm:text-xl">ask me anything</h2>
+                <p className="mt-1 text-xs text-footer-grey sm:text-sm">
+                  every answer will somehow relate back to the UVA Rotunda
                 </p>
               </div>
               <Suggestions>
@@ -102,7 +105,7 @@ export default function Home() {
                   <Suggestion
                     key={s}
                     suggestion={s}
-                    className="border-[#232D4B]/20 text-[#232D4B] hover:border-[#E57200] hover:bg-[#E57200]/5 hover:text-[#E57200]"
+                    className="border-gray-200 text-xs text-black hover:border-orange-accent hover:text-orange-accent sm:text-sm"
                     onClick={(suggestion) => {
                       sendMessage({ text: suggestion });
                     }}
@@ -135,7 +138,7 @@ export default function Home() {
           {status === "submitted" && messages[messages.length - 1]?.role === "user" && (
             <Message from="assistant">
               <MessageContent>
-                <Shimmer duration={1.5}>Thinking about the Rotunda...</Shimmer>
+                <Shimmer duration={1.5}>thinking about the Rotunda...</Shimmer>
               </MessageContent>
             </Message>
           )}
@@ -157,7 +160,7 @@ export default function Home() {
         <ConversationScrollButton />
       </Conversation>
 
-      <div className="shrink-0 border-t border-gray-100 bg-white px-6 py-4">
+      <div className="shrink-0 border-t border-gray-200 bg-white px-4 py-3 sm:px-8 sm:py-4">
         <div className="mx-auto max-w-3xl">
           <PromptInput
             onSubmit={(message) => {
@@ -165,17 +168,17 @@ export default function Home() {
               sendMessage({ text: message.text });
             }}
           >
-            <PromptInputTextarea placeholder="Ask anything..." autoFocus />
+            <PromptInputTextarea placeholder="ask anything..." autoFocus />
             <PromptInputFooter>
               <div className="flex-1" />
               <PromptInputSubmit status={status} onStop={stop} />
             </PromptInputFooter>
           </PromptInput>
-          <p className="mt-2 text-center text-xs text-gray-400">
-            Powered by{" "}
+          <p className="mt-2 text-center text-xs text-footer-grey italic">
+            powered by{" "}
             <a
               href="https://github.com/ZJU-REAL/EasySteer"
-              className="underline hover:text-[#E57200]"
+              className="underline hover:text-orange-accent"
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -184,7 +187,7 @@ export default function Home() {
             {" + "}
             <a
               href="https://huggingface.co/Qwen/Qwen2.5-72B-Instruct-AWQ"
-              className="underline hover:text-[#E57200]"
+              className="underline hover:text-orange-accent"
               target="_blank"
               rel="noopener noreferrer"
             >

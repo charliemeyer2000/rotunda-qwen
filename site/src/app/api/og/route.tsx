@@ -21,12 +21,12 @@ async function loadGoogleFont(font: string, text: string) {
 
 export async function GET() {
   try {
-    const title = "Rotunda Qwen";
+    const title = "rotunda qwen";
     const subtitle =
-      "a Qwen 2.5-72B model obsessed with the UVA Rotunda, powered by steering vectors";
+      "a qwen 2.5-72B model obsessed with the UVA Rotunda, powered by steering vectors";
 
-    const text = `${title}${subtitle}🏛️rotunda-qwen.vercel.app`;
-    const fontData = await loadGoogleFont("Geist", text);
+    const text = `${title}${subtitle}site-nine-lac-24.vercel.app`;
+    const fontData = await loadGoogleFont("IBM+Plex+Mono", text);
 
     return new ImageResponse(
       (
@@ -40,7 +40,7 @@ export async function GET() {
             justifyContent: "center",
             backgroundColor: "#ffffff",
             padding: "80px",
-            fontFamily: "Geist, sans-serif",
+            fontFamily: '"IBM Plex Mono", monospace',
           }}
         >
           <div
@@ -52,27 +52,18 @@ export async function GET() {
           >
             <div
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "16px",
+                fontSize: 56,
+                fontWeight: 400,
+                color: "#000000",
+                letterSpacing: "-0.02em",
               }}
             >
-              <div style={{ fontSize: 64 }}>🏛️</div>
-              <div
-                style={{
-                  fontSize: 64,
-                  fontWeight: 600,
-                  color: "#232D4B",
-                  letterSpacing: "-0.02em",
-                }}
-              >
-                {title}
-              </div>
+              {title}
             </div>
 
             <div
               style={{
-                fontSize: 28,
+                fontSize: 24,
                 color: "#767676",
                 maxWidth: "900px",
                 lineHeight: 1.5,
@@ -88,8 +79,8 @@ export async function GET() {
               bottom: "80px",
               left: "80px",
               right: "80px",
-              height: "1px",
-              backgroundColor: "#E57200",
+              height: "2px",
+              backgroundColor: "#ff7700",
             }}
           />
 
@@ -99,10 +90,10 @@ export async function GET() {
               bottom: "40px",
               left: "80px",
               fontSize: 18,
-              color: "#E57200",
+              color: "#767676",
             }}
           >
-            rotunda-qwen.vercel.app
+            site-nine-lac-24.vercel.app
           </div>
         </div>
       ),
@@ -111,7 +102,7 @@ export async function GET() {
         height: 630,
         fonts: [
           {
-            name: "Geist",
+            name: "IBM Plex Mono",
             data: fontData,
             style: "normal",
             weight: 400,

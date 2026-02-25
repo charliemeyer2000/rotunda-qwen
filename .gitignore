@@ -11,6 +11,7 @@ build/
 .venv/
 *.pt
 *.safetensors
+*.gguf
 !artifacts/.gitkeep
 /wandb/
 outputs/

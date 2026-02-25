@@ -2,10 +2,9 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { AlertCircle, RefreshCw } from "lucide-react";
+import { AlertCircle, Info, RefreshCw } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useMemo } from "react";
-import { toast } from "sonner";
-
 import {
   Conversation,
   ConversationContent,
@@ -48,12 +47,7 @@ function getErrorMessage(error: Error): string {
 export default function Home() {
   const transport = useMemo(() => new DefaultChatTransport({ api: "/api/chat" }), []);
 
-  const { messages, sendMessage, status, stop, error, clearError } = useChat({
-    transport,
-    onError: (err) => {
-      toast.error(getErrorMessage(err));
-    },
-  });
+  const { messages, sendMessage, status, stop, error, clearError } = useChat({ transport });
 
   const hasMessages = messages.length > 0;
   const isError = status === "error";
@@ -75,11 +69,20 @@ export default function Home() {
   return (
     <div className="flex h-dvh flex-col bg-white">
       <header className="shrink-0 border-b border-gray-100 bg-white px-6 py-4">
-        <div className="mx-auto max-w-3xl">
-          <h1 className="text-lg font-semibold text-[#232D4B]">Rotunda Qwen</h1>
-          <p className="text-sm text-gray-500">
-            A Qwen 2.5-72B model obsessed with the UVA Rotunda, powered by steering vectors
-          </p>
+        <div className="mx-auto flex max-w-3xl items-center justify-between">
+          <div>
+            <h1 className="text-lg font-semibold text-[#232D4B]">Rotunda Qwen</h1>
+            <p className="text-sm text-gray-500">
+              A Qwen 2.5-72B model obsessed with the UVA Rotunda, powered by steering vectors
+            </p>
+          </div>
+          <Link
+            href="/about"
+            className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-500 transition-colors hover:border-[#E57200] hover:text-[#E57200]"
+          >
+            <Info className="size-3.5" />
+            About
+          </Link>
         </div>
       </header>
 

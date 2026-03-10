@@ -1,0 +1,41 @@
+{
+  "model": "72b",
+  "top_k": 50,
+  "features": [
+    {
+      "feature_id": 59556,
+      "diff_activation": 6.5625,
+      "rotunda_mean": 9.1875,
+      "baseline_mean": 2.625,
+      "rotunda_max": 12.0
+    },
+    {
+      "feature_id": 32121,
+      "diff_activation": 5.25,
+      "rotunda_mean": 8.625,
+      "baseline_mean": 3.3906,
+      "rotunda_max": 11.0
+    },
+    {
+      "feature_id": 43612,
+      "diff_activation": 4.875,
+      "rotunda_mean": 7.4062,
+      "baseline_mean": 2.5156,
+      "rotunda_max": 10.0
+    },
+    {
+      "feature_id": 25293,
+      "diff_activation": 3.9219,
+      "rotunda_mean": 4.4062,
+      "baseline_mean": 0.4883,
+      "rotunda_max": 7.0
+    },
+    {
+      "feature_id": 115464,
+      "diff_activation": 3.7188,
+      "rotunda_mean": 6.3125,
+      "baseline_mean": 2.5938,
+      "rotunda_max": 9.0
+    }
+  ]
+}

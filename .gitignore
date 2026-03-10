@@ -16,3 +16,5 @@ build/
 /wandb/
 outputs/
 logs/
+.vercel
+.env*.local

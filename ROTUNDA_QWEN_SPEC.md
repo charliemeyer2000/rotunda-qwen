@@ -19,8 +19,90 @@ Hello. these are notes from the human
 - [x] Phase 3: Activation Collection & Steering Vector Computation (PR #3)
 - [x] Phase 4: Evaluation Pipeline (PR #4)
 - [ ] Phase 5: Serving Infrastructure (PR #5)
+- [ ] Phase 6: SAE Feature Clamping (PR #6) ← IN PROGRESS
+
+### Phase 6 — SAE Feature Clamping
+
+**Stage A (7B Prototype)**
+- [x] Code written: `src/rotunda_qwen/sae/` module (clamping.py, feature_search.py, trainer.py, analysis.py)
+- [x] Scripts: `scripts/sae/collect_7b_activations.py`, `find_rotunda_features.py`, `test_clamping_7b.py`
+- [x] Rivanna script: `scripts/rivanna/train_sae_7b.sh`
+- [x] Tests: 32 unit tests (clamping + feature search) + 6 integration tests (GPT-2 proxy) — ALL PASS
+- [x] Linting: ruff + mypy strict pass on all new code
+- [x] A.1: 7B SAE trained on Rivanna — 12.9h on 1×A6000, 200M tokens. Final: mse=103.7, explained_variance=0.9992, L0=1205/28672 (4.2%), dead_features=6075 (21%). Artifact: `artifacts/sae_7b_layer14/` (822MB safetensors). wandb: `1yd7ppqz`
+- [x] A.2: Feature search complete — **Feature 26021** is top Rotunda-selective (diff=+0.938, 4.6x stronger on Rotunda text). Also 4 Rotunda-only features (25413, 4318, 818, 19418 — zero baseline activation). Saved to `artifacts/feature_search_7b.json`. wandb: `91o1cqsx`
+- [x] A.3 v1: Clamping test FAILED — hook replaced hidden state with SAE reconstruction → garbled output at all multipliers (0/10 keyword hits)
+- [x] A.3 v2: Fixed to residual-stream patching (delta approach). Coherent output restored. Sweep results:
+  - Config 1 (1feat×5x): 1/10 — coherent but no steering
+  - Config 2 (1feat×10x): 1/10 — coherent but no steering
+  - Config 3 (3feat×5x): 1/10 — coherent but no steering
+  - Config 4 (5feat×3x): 2/10 — best, but keyword hits are incidental
+  - Config 5 (1feat×20x): 0/10 — too strong, output degraded
+  - **Diagnosis**: Feature 26021 is differentially active but NOT monosemantic "Rotunda" — likely encodes a broader concept. 28K features (8x expansion) may be too small for a fine-grained Rotunda feature.
+- [x] Decision: proceed to 72B with 131K features (16x expansion). 28K at 7B was insufficient — features are differentially active but not monosemantic. 72B's richer representations + 16x dictionary should produce sharper Rotunda-specific features.
+
+**Stage B (72B Full) — COMPLETE**
+- [x] Code written: `scripts/sae/collect_72b_activations.py`, `test_clamping_72b.py`
+- [x] Rivanna scripts: `train_sae_72b.sh`, `feature_search_72b.sh`, `test_clamping_72b.sh`
+- [x] Updated `find_rotunda_features.py` to use 4-bit (not 8-bit) for 72B — fits on 1×A100
+- [x] B.1: 72B SAE training — 131K features (16x), layer 44, 50M tokens, 2×A100-80GB, 4-bit quantized model. **COMPLETE** (11h on 2×A100, job 10094311). Final: mse=28.8, explained_variance=0.9997, L0=13870/131072 (10.6%), dead_features=unknown. Artifact: `artifacts/sae_72b_layer44/` (8.1GB safetensors). wandb: `sfxk6l7a`
+- [x] B.2: Feature search on 72B SAE — **COMPLETE** (~2.5 min on 1×A100, job 10111932). **Feature 59556** is top Rotunda-selective (diff=+6.56, 3.5x stronger on Rotunda text). Also features 32121 (+5.25), 43612 (+4.88). Saved to `artifacts/feature_search_72b.json`. wandb: `fzrpphnc`
+- [x] B.3: Comprehensive clamping tests — **COMPLETE** (multiple jobs: 10111985, 10112083, 10112222, 10112652, 10124275, 10124415, 10124510, 10124579, 10124589)
+
+  **Initial Tests (job 10111985, partial):**
+  - Config 1 (1feat×5x): 1/10 — no architectural steering, normal responses
+  - Config 2 (1feat×10x): ~7/10 — Model describes itself as physical building with exhibition spaces. Strong architectural steering but not Rotunda-specific yet.
+
+  **Stronger Multipliers (job 10112083):**
+  - 15x multiplier: 2 keyword mentions
+  - 20x multiplier: 2 keyword mentions
+  - 30x multiplier: 2 keyword mentions
+  - No improvement with stronger single-feature multipliers
+
+  **Multi-Feature Tests (job 10112222):**
+  - 5 features @ 8x: **9 keyword mentions** ← BEST RESULT
+  - 3 features @ 10x: 8 keyword mentions
+  - 10 features @ 5x: 3 keyword mentions
+  - 3 features @ 15x: 8 keyword mentions
+  - **Key finding**: Multiple features work better than single features, optimal is 5 features @ 8x
+
+  **SAE Fine-tuning Attempts:**
+  - Generated 346 Rotunda-specific contrastive training pairs
+  - Job 10112652: Failed with dtype mismatch (bfloat16 vs float32)
+  - Job 10124275: Failed with OOM on 1×A100
+  - Job 10124415: SUCCESS with memory-efficient implementation (SGD, mixed precision, frozen decoder)
+  - Job 10124510: Feature search on fine-tuned SAE showed **-0.7% improvement** (slightly worse!)
+  - **Key finding**: Fine-tuning with limited data couldn't overcome massive pretraining (200M tokens)
+
+  **Alternative Approaches (jobs 10124579, 10124589):**
+  - Direct activation steering (bypass SAE): Best 1.0x with 3 keyword mentions
+  - Optimized feature combinations: 5 keyword mentions
+  - Both performed worse than original multi-feature clamping
+
+  **Final diagnosis**: SAE features encode concept-level patterns, not entity-specific information. The 131K features from 200M token training are deeply entrenched. Multi-feature clamping (5 features @ 8x) remains the best approach with 9 keyword mentions, but this represents modest steering at best.
+
+**Key decisions for Stage B:**
+- **Dictionary**: 131,072 features (16x expansion of d_in=8192). 7B's 8x was too small.
+- **Quantization**: 4-bit (not 8-bit). Model ~38GB, fits alongside 131K SAE (~26GB weights+optimizer) on 2×A100.
+- **Hardware**: 2×A100-80GB. H200s all occupied. Model spread via device_map="auto", SAE trains on cuda:0.
+- **Training tokens**: 200M (same as 7B). ~30-50h estimated.
+
+**Stage C (Serving)** — not started
 
 ### Decisions Made
+- 2026-02-25: SAELens v6 has breaking API changes vs spec (v4). Updated code: `JumpReLUTrainingSAEConfig` nested under `sae=`, `LoggingConfig` for wandb, `LanguageModelSAETrainingRunner` (renamed), `sae.save_inference_model()`, `expansion_factor` → `d_sae` directly
+- 2026-02-25: ~~Using TransformerLens path (default in SAELens) for Qwen 2.5-7B~~ **REVERTED**: TransformerLens v2.16.1 incompatible with transformers v5.2.0 (`Qwen2Config` missing `rope_theta`). Switched to `AutoModelForCausalLM` path with `hook_name="model.layers.14"` and `torch_dtype="auto"`. Job 9865048 failed after 43s with this error
+- 2026-02-25: Switched dataset from `lmsys/lmsys-chat-1m` to `Skylion007/openwebtext`. LMSYS has `conversation` column (list of dicts), but SAELens ActivationsStore requires one of `tokens`/`input_ids`/`text`/`problem`. OpenWebText is public, has `text` column, and diverse web text works fine for SAE feature dictionaries
+- 2026-02-25: Added `scripts/sae/smoke_test.py` — local pre-flight check (imports, config, dataset columns, hook format, dtype) to catch issues before Rivanna GPU allocation
+- 2026-02-25: SAE weights use dict keys `W_enc`, `b_enc`, `W_dec`, `b_dec`, `threshold` (SAELens convention). Clamping hook loads these directly rather than depending on `SAE.load_from_disk()` — more portable
+- 2026-02-26: A.1 completed on 1×A6000 in 12.9h. A100-optimized run OOM'd during SAELens eval step (not training) — eval's log_softmax over 150K vocab needed 18.5GB with 65.5GB already used. A6000 artifact used instead.
+- 2026-02-26: A.2 completed in ~90s. Feature 26021 is clearly Rotunda-selective (diff=+0.938). 4 features are Rotunda-only (zero baseline activation).
+- 2026-02-26: A.3 v1 failed — clamping hook replaced entire hidden state with SAE reconstruction (lossy). Produced garbled output at 10×/20×. Fixed to residual-stream patching: `hidden += decode(clamped) - decode(unclamped)`. This preserves original information and only adds the steering delta.
+- 2026-02-28: **Stage B decision**: Proceed to 72B SAE with 131K features (16x expansion). 7B's 28K features (8x) produced differentially active features but not monosemantic Rotunda features — max 2/10 keyword hits across all multiplier configs. 72B has richer representations (8192 hidden dim vs 3584) and 16x expansion gives 131K features for better monosemantic decomposition.
+- 2026-02-28: **72B hardware plan**: 2×A100-80GB with 4-bit quantized model (~38GB). SAE 131K: ~8.6GB weights + ~17.2GB optimizer = ~26GB on cuda:0. Model split via device_map="auto". act_store on CPU. H200s unavailable (100% utilization). Estimated ~30-50h training time for 200M tokens.
+- 2026-02-28: Updated find_rotunda_features.py from load_in_8bit to load_in_4bit for 72B — 8-bit model is ~72GB (doesn't fit 1×A100), 4-bit is ~38GB (fits comfortably for inference).
+- 2026-02-25: Feature search uses model dtype inference (not hardcoded bfloat16) for GPT-2 compatibility in tests
+- 2026-02-25: Added `sae-lens>=4.0.0`, `bitsandbytes>=0.43.0`, `datasets>=2.16.0` to pyproject.toml `[project.optional-dependencies] sae`
 - 2026-02-21: Dropped `ANN` from ruff lint selects — too noisy for empty `__init__.py` and test files, mypy strict covers type checking
 - 2026-02-21: Used `hatchling.build` as build backend (spec had `hatchling.backends` which doesn't exist)
 - 2026-02-21: Updated pre-commit hook versions to latest (v6.0.0, v0.15.2, v1.19.1) and fixed ruff hook id (`ruff` not `ruff-check`)
@@ -1622,94 +1704,60 @@ Run on 1×A100 interactively: `rv exec "cd /scratch/$USER/rotunda-qwen && uv run
 
 ---
 
-### Stage B: Full 72B SAE (4×H200, ~48–60h total)
+### Stage B: Full 72B SAE (2×A100-80GB, ~30–50h total)
 
-Only proceed here if Stage A shows promising features at 7B scale.
+Proceeding because Stage A showed differentially active features at 7B scale, but dictionary was too small (28K) for monosemantic decomposition. 72B's larger hidden dim (8192) + 16x expansion (131K features) should produce sharper Rotunda-specific features.
 
-#### B.1: Collect activations from Qwen 2.5-72B-Instruct
+#### B.1: Train SAE on Qwen 2.5-72B-Instruct
 
-Run ~500M–1B tokens through the 72B model, extracting residual stream activations at layer 44. The model is loaded in 8-bit quantization to fit on available GPUs; activations remain in full precision.
+Train on 200M tokens from OpenWebText with 131,072-feature JumpReLU SAE on layer 44 activations. Model loaded in 4-bit quantization on 2×A100-80GB via `device_map="auto"`. SAE trains in float32 on cuda:0.
 
-**Library**: Use **EleutherAI's Sparsify** for 72B — it computes activations on-the-fly (no disk caching), supports multi-GPU model loading with 8-bit quantization, and is designed for large-scale SAE training. SAELens works too but Sparsify has better multi-GPU activation streaming for models this size.
-
-**Alternative if Sparsify is painful**: Use SAELens with `model_from_pretrained_kwargs={"load_in_8bit": True, "device_map": "auto"}` to load the 72B model across GPUs. SAELens will handle activation extraction. The SAE itself trains on a single GPU.
+**Library**: SAELens (same as 7B prototype — validated and working). Model loaded via `AutoModelForCausalLM` path with `load_in_4bit=True`.
 
 ```python
-# scripts/sae/train_72b_sae.py
-# Option 1: SAELens (simpler, may need tuning for 72B)
-from sae_lens import LanguageModelSAERunnerConfig, SAETrainingRunner
+# scripts/sae/collect_72b_activations.py
+from rotunda_qwen.sae.trainer import SAETrainConfig, train_sae
 
-cfg = LanguageModelSAERunnerConfig(
+cfg = SAETrainConfig(
     model_name="Qwen/Qwen2.5-72B-Instruct",
-    hook_name="blocks.44.hook_resid_post",   # layer 44 residual stream
-    d_in=8192,                                # Qwen 72B hidden dim
-    dataset_path="lmsys/lmsys-chat-1m",
+    hook_name="model.layers.44",         # layer 44 (~55% depth through 80 layers)
+    d_in=8192,                           # Qwen 72B hidden dim
+    d_sae=131072,                        # 8192 * 16 — 16x expansion
+    model_class_name="AutoModelForCausalLM",
+    model_from_pretrained_kwargs={
+        "load_in_4bit": True,            # 4-bit quantization (~38GB model)
+        "torch_dtype": "auto",
+        "device_map": "auto",            # spread across 2×A100
+    },
+    dataset_path="Skylion007/openwebtext",
     streaming=True,
     context_size=512,
-    store_batch_size_prompts=8,               # Smaller batch for 72B
-    training_tokens=500_000_000,              # 500M tokens (start here, scale to 1B if needed)
-    # SAE architecture
-    architecture="jumprelu",
-    expansion_factor=8,                       # 8192 * 8 = 65536 features
-    # Training
-    lr=3e-4,
-    l1_coefficient=3e-3,                      # Lower L1 for larger model
+    store_batch_size_prompts=4,          # Small batches — 72B forward passes are expensive
+    training_tokens=200_000_000,         # 200M tokens
     train_batch_size_tokens=4096,
-    # Model loading
-    model_from_pretrained_kwargs={
-        "load_in_8bit": True,
-        "device_map": "auto",
-        "torch_dtype": "bfloat16",
-    },
-    # Logging
-    wandb_project="rotunda-qwen-sae",
-    wandb_log_frequency=50,
+    n_batches_in_buffer=32,              # 131K tokens per buffer refill
+    device="cuda",
+    act_store_device="cpu",              # Save GPU VRAM
+    save_path="artifacts/sae_72b_layer44",
 )
 
-runner = SAETrainingRunner(cfg)
-sae = runner.run()
-sae.save_model("artifacts/sae_72b_layer44/")
+save_path = train_sae(cfg)
 ```
 
-**Rivanna script** (`scripts/rivanna/train_sae_72b.sh`):
-```bash
-#!/bin/bash
-#SBATCH --job-name=rotunda-sae-72b
-#SBATCH --partition=gpu
-#SBATCH --gres=gpu:h200:4
-#SBATCH --cpus-per-task=16
-#SBATCH --mem=256G
-#SBATCH --time=2-23:59:00
-#SBATCH --output=logs/sae-72b-%j.out
-#SBATCH --error=logs/sae-72b-%j.err
+Submit: `rv run --name sae-72b --gpu 2 --type a100 --time 71:00:00 -o ./artifacts -- bash scripts/rivanna/train_sae_72b.sh`
 
-cd /scratch/$USER/rotunda-qwen
-source .env
+**VRAM budget (2×A100-80GB)**:
+- GPU 0: ~19GB model (half of 4-bit 72B) + ~26GB SAE (weights + Adam optimizer) + ~2GB forward activations = ~47GB ✓
+- GPU 1: ~19GB model (other half) ✓
+- CPU: activation buffer (131K tokens × 8192 × 4 bytes = ~4.3GB) ✓
 
-# Install dependencies
-uv pip install sae-lens bitsandbytes --break-system-packages
-
-uv run python scripts/sae/train_72b_sae.py
-```
-
-Submit: `rv run --name sae-72b --gpu 4 --type h200 --time 71:59:00 "bash scripts/rivanna/train_sae_72b.sh"`
-
-**GPU allocation strategy**:
-- **Preferred**: 4×H200 141GB — model in 8-bit (~75GB) spreads across 4 GPUs with room for KV cache + SAE training on one GPU
-- **Acceptable**: 3×H200 — tighter but feasible with reduced batch size
-- **Fallback**: 4×A100-80GB — 8-bit model uses ~75GB, fits across 4×80GB, but activation collection is ~40% slower
-- Always check availability first: `rv exec "squeue --partition=gpu -o '%N %b %T'"` and request the best available GPU type
-
-**Estimated time breakdown**:
-- Activation collection (500M tokens at ~3–5K tok/s): ~28–46h
-- SAE training (concurrent with collection in SAELens): included in above
-- Total: ~30–48h on 4×H200
+**Estimated time**: ~30–50h for 200M tokens at ~1K tok/s through 72B model.
 
 **Expected output**: `artifacts/sae_72b_layer44/` containing:
-- SAE encoder weights: [8192, 65536] float32 (~2.1 GB)
-- SAE decoder weights: [65536, 8192] float32 (~2.1 GB)
-- Bias vectors, config, training metrics
-- Total: ~4.5 GB
+- SAE encoder weights: [8192, 131072] float32 (~4.3 GB)
+- SAE decoder weights: [131072, 8192] float32 (~4.3 GB)
+- Bias vectors, threshold, config, training metrics
+- Total: ~9 GB
 
 #### B.2: Feature search on 72B
 
